@@ -16,8 +16,12 @@ fn request(
         .send(Message::from(req.as_slice()))
         .map_err(|(_, err)| err)?;
     let msg: Message = client.recv()?;
-    let v: Vec<(String, String, f64)> = rmp_serde::from_slice(msg.as_slice())?;
-    Ok(v)
+    let slice: &[u8] = msg.as_slice();
+    rmp_serde::from_slice(slice)
+        .or_else(|_| {
+            let err: String = rmp_serde::from_slice(slice)?;
+            Err(Box::from(format!("Server error: {}", err)))
+        })
 }
 
 #[pg_extern]
@@ -35,8 +39,8 @@ fn mr_node_score(
 > {
     let rq = ((("src", "=", ego), ("dest", "=", target)), ());
     let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req)?;
-    Ok(TableIterator::new(res))
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
 }
 
 #[pg_extern]
@@ -46,10 +50,10 @@ fn mr_scores(
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn std::error::Error + 'static>,
 > {
-    let rq = ((("src", "=", ego),), ());
+    let rq = ((("src", "=", ego), ), ());
     let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req)?;
-    Ok(TableIterator::new(res))
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
 }
 
 #[pg_extern]
@@ -61,8 +65,8 @@ fn mr_edge(
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn std::error::Error>,
 > {
-    let rq = (((src, dest, weight),), ());
+    let rq = (((src, dest, weight), ), ());
     let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req)?;
-    Ok(TableIterator::new(res))
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
 }
