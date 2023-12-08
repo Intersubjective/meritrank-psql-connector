@@ -70,3 +70,30 @@ fn mr_edge(
     let res = request(&req);
     res.map(|v| TableIterator::new(v))
 }
+
+#[pg_extern]
+fn mr_delete_edge(
+    ego: &'static str,
+    target: &'static str,
+) -> core::result::Result<
+    &'static str,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = ((("src", "delete", ego), ("dest", "delete", target)), ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let _res = request(&req)?;
+    Ok("Ok")
+}
+
+#[pg_extern]
+fn mr_delete_node(
+    ego: &'static str,
+) -> core::result::Result<
+    &'static str,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = ((("src", "delete", ego), ), ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let _res = request(&req)?;
+    Ok("Ok")
+}
