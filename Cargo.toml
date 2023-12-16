@@ -22,6 +22,7 @@ pgrx_test = []
 pgrx = "0.11.0"
 nng = "1.0.1"
 rmp-serde = "1.1.2"
+serde = "1.0.193"
 
 dotenv = { version = "0.15.0" }
 

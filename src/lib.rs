@@ -1,15 +1,16 @@
 use nng::*;
 use pgrx::iter::TableIterator;
 use pgrx::*;
+use serde::de::Deserialize;
 
 // pgx specific macros
 pg_module_magic!();
 
 const SERVICE_URL: &str = "tcp://127.0.0.1:10234";
 
-fn request(
+fn request<T: for<'a> Deserialize<'a>>(
     req: &Vec<u8>,
-) -> core::result::Result<Vec<(String, String, f64)>, Box<dyn std::error::Error + 'static>> {
+) -> core::result::Result<Vec<T>, Box<dyn std::error::Error + 'static>> {
     let client = Socket::new(Protocol::Req0)?;
     client.dial(SERVICE_URL)?;
     client
@@ -81,7 +82,7 @@ fn mr_delete_edge(
 > {
     let rq = ((("src", "delete", ego), ("dest", "delete", target)), ());
     let req = rmp_serde::to_vec(&rq)?;
-    let _res = request(&req)?;
+    let _res: Vec<()> = request(&req)?;
     Ok("Ok")
 }
 
@@ -94,6 +95,34 @@ fn mr_delete_node(
 > {
     let rq = ((("src", "delete", ego), ), ());
     let req = rmp_serde::to_vec(&rq)?;
-    let _res = request(&req)?;
+    let _res: Vec<()> = request(&req)?;
     Ok("Ok")
+}
+
+#[pg_extern]
+fn mr_gravity_graph(
+    ego: &'static str,
+    focus: &'static str,
+) -> core::result::Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = (((ego, "gravity", focus),), ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
+}
+
+#[pg_extern]
+fn mr_gravity_nodes(
+    ego: &'static str,
+    focus: &'static str,
+) -> core::result::Result<
+    TableIterator<'static, (name!(node, String), name!(weight, f64))>,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = (((ego, "gravity_nodes", focus),), ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
 }
