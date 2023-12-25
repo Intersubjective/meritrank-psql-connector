@@ -19,12 +19,13 @@ pg15 = ["pgrx/pg15", "pgrx-tests/pg15"]
 pgrx_test = []
 
 [dependencies]
-pgrx = "0.11.0"
+pgrx = "0.11.2"
 nng = "1.0.1"
 rmp-serde = "1.1.2"
 serde = "1.0.193"
+lazy_static = "1.4"
 
 dotenv = { version = "0.15.0" }
 
 [dev-dependencies]
-pgrx-tests = "=0.11.0"
+pgrx-tests = "=0.11.2"
