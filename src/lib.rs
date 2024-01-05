@@ -136,3 +136,15 @@ fn mr_for_beacons_global() -> core::result::Result<
     let res = request(&req);
     res.map(|v| TableIterator::new(v))
 }
+
+// connected nodes
+#[pg_extern]
+fn mr_connected(ego: &'static str) -> core::result::Result<
+    TableIterator<'static, (name!(src, String), name!(dest, String))>,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = (((ego, "connected"), ), ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
+}
