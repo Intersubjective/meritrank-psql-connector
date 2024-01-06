@@ -125,13 +125,35 @@ fn mr_gravity_nodes(
     res.map(|v| TableIterator::new(v))
 }
 
-// temp
 #[pg_extern]
 fn mr_for_beacons_global() -> core::result::Result<
     TableIterator<'static, (name!(ego, String), name!(dest, String), name!(score, f64))>,
     Box<dyn std::error::Error + 'static>,
 > {
     let rq = ("for_beacons_global", ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let res = request(&req);
+    res.map(|v| TableIterator::new(v))
+}
+
+#[pg_extern]
+fn mr_nodes() -> core::result::Result<
+    TableIterator<'static, (name!(id, String), )>,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = ("nodes", ());
+    let req = rmp_serde::to_vec(&rq)?;
+    let res = request::<String>(&req)
+        .map(|v| v.into_iter().map(|s| (s,))); // wrap to single-element tuple
+    res.map(|v| TableIterator::new(v))
+}
+
+#[pg_extern]
+fn mr_edges() -> core::result::Result<
+    TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
+    Box<dyn std::error::Error + 'static>,
+> {
+    let rq = ("edges", ());
     let req = rmp_serde::to_vec(&rq)?;
     let res = request(&req);
     res.map(|v| TableIterator::new(v))
