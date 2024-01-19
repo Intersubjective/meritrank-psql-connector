@@ -16,12 +16,12 @@ lazy_static! {
 }
 
 fn request<T: for<'a> Deserialize<'a>>(
-    req: Vec<u8>,
+    q: Vec<u8>,
 ) -> Result<Vec<T>, Box<dyn Error + 'static>> {
     let client = Socket::new(Protocol::Req0)?;
     client.dial(&SERVICE_URL)?;
     client
-        .send(Message::from(req.as_slice()))
+        .send(Message::from(q.as_slice()))
         .map_err(|(_, err)| err)?;
     let msg: Message = client.recv()?;
     let slice: &[u8] = msg.as_slice();
@@ -37,20 +37,22 @@ fn mr_service_url() -> &'static str {
 }
 
 fn contexted_request<T: for<'a> Deserialize<'a>>(
-    context: &str) -> impl Fn(Vec<u8>) -> Result<
+    context: &str
+) -> impl Fn(Vec<u8>) -> Result<
     Vec<T>,
     Box<dyn Error + 'static>,
 > + '_ {
     move |payload: Vec<u8>| {
         //let q: (&str, &str, &[u8]) = ("context", context, payload.as_slice()); // why not working?
         let q: (&str, &str, Vec<u8>) = ("context", context, payload);
-        rmp_serde::to_vec( & q).map(request)?
+        rmp_serde::to_vec( & q)
+            .map(request)?
     }
 }
 
 fn mr_node_score0(
-    ego: &'static str,
-    target: &'static str,
+    ego: &str,
+    target: &str,
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -62,8 +64,8 @@ fn mr_node_score0(
 
 #[pg_extern]
 fn mr_node_score(
-    ego: &'static str,
-    target: &'static str,
+    ego: &str,
+    target: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -75,9 +77,9 @@ fn mr_node_score(
 
 #[pg_extern]
 fn mr_node_score1(
-    context: &'static str,
-    ego: &'static str,
-    target: &'static str,
+    context: &str,
+    ego: &str,
+    target: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -88,7 +90,7 @@ fn mr_node_score1(
 }
 
 fn mr_scores0(
-    ego: &'static str,
+    ego: &str,
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -100,7 +102,7 @@ fn mr_scores0(
 
 #[pg_extern]
 fn mr_scores(
-    ego: &'static str,
+    ego: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -112,8 +114,8 @@ fn mr_scores(
 
 #[pg_extern]
 fn mr_scores1(
-    context: &'static str,
-    ego: &'static str,
+    context: &str,
+    ego: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -124,8 +126,8 @@ fn mr_scores1(
 }
 
 fn mr_edge0(
-    src: &'static str,
-    dest: &'static str,
+    src: &str,
+    dest: &str,
     weight: f64,
 ) -> Result<
     Vec<u8>,
@@ -138,8 +140,8 @@ fn mr_edge0(
 
 #[pg_extern]
 fn mr_edge(
-    src: &'static str,
-    dest: &'static str,
+    src: &str,
+    dest: &str,
     weight: f64,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
@@ -152,9 +154,9 @@ fn mr_edge(
 
 #[pg_extern]
 fn mr_edge1(
-    context: &'static str,
-    src: &'static str,
-    dest: &'static str,
+    context: &str,
+    src: &str,
+    dest: &str,
     weight: f64,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
@@ -166,8 +168,8 @@ fn mr_edge1(
 }
 
 fn mr_delete_edge0(
-    ego: &'static str,
-    target: &'static str,
+    ego: &str,
+    target: &str,
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
     let q = ((("src", "delete", ego), ("dest", "delete", target)), ());
     rmp_serde::to_vec(&q)
@@ -175,8 +177,8 @@ fn mr_delete_edge0(
 }
 #[pg_extern]
 fn mr_delete_edge(
-    ego: &'static str,
-    target: &'static str,
+    ego: &str,
+    target: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     mr_delete_edge0(ego, target)
         .map(request)?
@@ -186,8 +188,8 @@ fn mr_delete_edge(
 #[pg_extern]
 fn mr_delete_edge1(
     context: &str,
-    ego: &'static str,
-    target: &'static str,
+    ego: &str,
+    target: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     mr_delete_edge0(ego, target)
         .map(contexted_request(context))?
@@ -196,7 +198,7 @@ fn mr_delete_edge1(
 }
 
 fn mr_delete_node0(
-    ego: &'static str,
+    ego: &str,
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
     let q = ((("src", "delete", ego), ), ());
     rmp_serde::to_vec(&q)
@@ -205,7 +207,7 @@ fn mr_delete_node0(
 
 #[pg_extern]
 fn mr_delete_node(
-    ego: &'static str,
+    ego: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     mr_delete_node0(ego)
         .map( request )?
@@ -216,7 +218,7 @@ fn mr_delete_node(
 #[pg_extern]
 fn mr_delete_node1(
     context: &str,
-    ego: &'static str,
+    ego: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     mr_delete_node0(ego)
         .map(contexted_request(context))?
@@ -225,8 +227,8 @@ fn mr_delete_node1(
 }
 
 fn mr_gravity_graph0(
-    ego: &'static str,
-    focus: &'static str,
+    ego: &str,
+    focus: &str,
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -238,8 +240,8 @@ fn mr_gravity_graph0(
 
 #[pg_extern]
 fn mr_gravity_graph(
-    ego: &'static str,
-    focus: &'static str,
+    ego: &str,
+    focus: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -252,8 +254,8 @@ fn mr_gravity_graph(
 #[pg_extern]
 fn mr_gravity_graph1(
     context: &str,
-    ego: &'static str,
-    focus: &'static str,
+    ego: &str,
+    focus: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -264,8 +266,8 @@ fn mr_gravity_graph1(
 }
 
 fn mr_gravity_nodes0(
-    ego: &'static str,
-    focus: &'static str,
+    ego: &str,
+    focus: &str,
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -277,8 +279,8 @@ fn mr_gravity_nodes0(
 
 #[pg_extern]
 fn mr_gravity_nodes(
-    ego: &'static str,
-    focus: &'static str,
+    ego: &str,
+    focus: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
@@ -291,15 +293,14 @@ fn mr_gravity_nodes(
 #[pg_extern]
 fn mr_gravity_nodes1(
     context: &str,
-    ego: &'static str,
-    focus: &'static str,
+    ego: &str,
+    focus: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
     mr_gravity_nodes0(ego, focus)
         .map(contexted_request(context))?
-        .map(request)?
         .map(TableIterator::new)
 }
 
@@ -367,18 +368,21 @@ fn mr_edges() -> Result<
 }
 
 #[pg_extern]
-fn mr_edges1(context: &str) -> Result<
+fn mr_edges1(
+    context: &str
+) -> Result<
     TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
     mr_edges0()
         .map(contexted_request(context))?
-        .map(request)?
         .map(TableIterator::new)
 }
 
 // connected nodes
-fn mr_connected0(ego: &'static str) -> Result<
+fn mr_connected0(
+    ego: &str
+) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
 > {
@@ -387,7 +391,9 @@ fn mr_connected0(ego: &'static str) -> Result<
         .map_err(|e| e.into())
 }
 #[pg_extern]
-fn mr_connected(ego: &'static str) -> Result<
+fn mr_connected(
+    ego: &str
+) -> Result<
     TableIterator<'static, (name!(src, String), name!(dest, String))>,
     Box<dyn Error + 'static>,
 > {
@@ -399,7 +405,7 @@ fn mr_connected(ego: &'static str) -> Result<
 #[pg_extern]
 fn mr_connected1(
     context: &str,
-    ego: &'static str
+    ego: &str
 ) -> Result<
     TableIterator<'static, (name!(src, String), name!(dest, String))>,
     Box<dyn Error + 'static>,
