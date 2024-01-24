@@ -89,6 +89,21 @@ fn mr_node_score1(
         .map(TableIterator::new)
 }
 
+#[pg_extern]
+fn mr_node_score_null(
+    ego: &str,
+    target: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego), ("dest", "=", target)), (), "null");
+    rmp_serde::to_vec(&q)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+
 fn mr_scores0(
     ego: &str,
 ) -> Result<
@@ -122,6 +137,19 @@ fn mr_scores1(
 > {
     mr_scores0(ego)
         .map(contexted_request(context))?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_scores_null(
+    ego: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego), ), (), "null");
+    rmp_serde::to_vec(&q)
+        .map(request)?
         .map(TableIterator::new)
 }
 
