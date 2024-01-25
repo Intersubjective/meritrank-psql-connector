@@ -63,7 +63,7 @@ fn mr_node_score0(
 }
 
 #[pg_extern]
-fn mr_node_score(
+fn mr_node_score_superposition(
     ego: &str,
     target: &str,
 ) -> Result<
@@ -76,7 +76,7 @@ fn mr_node_score(
 }
 
 #[pg_extern]
-fn mr_node_score1(
+fn mr_node_score(
     context: &str,
     ego: &str,
     target: &str,
@@ -90,7 +90,7 @@ fn mr_node_score1(
 }
 
 #[pg_extern]
-fn mr_node_score_null(
+fn mr_node_score_linear_sum(
     ego: &str,
     target: &str,
 ) -> Result<
@@ -116,7 +116,7 @@ fn mr_scores0(
 }
 
 #[pg_extern]
-fn mr_scores(
+fn mr_scores_superposition(
     ego: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
@@ -128,7 +128,7 @@ fn mr_scores(
 }
 
 #[pg_extern]
-fn mr_scores1(
+fn mr_scores(
     context: &str,
     ego: &str,
 ) -> Result<
@@ -141,7 +141,7 @@ fn mr_scores1(
 }
 
 #[pg_extern]
-fn mr_scores_null(
+fn mr_scores_linear_sum(
     ego: &str,
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
