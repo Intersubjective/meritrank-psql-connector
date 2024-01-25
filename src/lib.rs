@@ -4,6 +4,8 @@ use pgrx::iter::TableIterator;
 use pgrx::*;
 use serde::de::Deserialize;
 use std::env::var;
+use std::error::Error;
+use core::result::Result;
 
 // pgx specific macros
 pg_module_magic!();
@@ -14,12 +16,12 @@ lazy_static! {
 }
 
 fn request<T: for<'a> Deserialize<'a>>(
-    req: &Vec<u8>,
-) -> core::result::Result<Vec<T>, Box<dyn std::error::Error + 'static>> {
+    q: Vec<u8>,
+) -> Result<Vec<T>, Box<dyn Error + 'static>> {
     let client = Socket::new(Protocol::Req0)?;
     client.dial(&SERVICE_URL)?;
     client
-        .send(Message::from(req.as_slice()))
+        .send(Message::from(q.as_slice()))
         .map_err(|(_, err)| err)?;
     let msg: Message = client.recv()?;
     let slice: &[u8] = msg.as_slice();
@@ -34,139 +36,409 @@ fn mr_service_url() -> &'static str {
     &SERVICE_URL
 }
 
+fn contexted_request<T: for<'a> Deserialize<'a>>(
+    context: &str
+) -> impl Fn(Vec<u8>) -> Result<
+    Vec<T>,
+    Box<dyn Error + 'static>,
+> + '_ {
+    move |payload: Vec<u8>| {
+        //let q: (&str, &str, &[u8]) = ("context", context, payload.as_slice()); // why not working?
+        let q: (&str, &str, Vec<u8>) = ("context", context, payload);
+        rmp_serde::to_vec( & q)
+            .map(request)?
+    }
+}
+
+fn mr_node_score0(
+    ego: &str,
+    target: &str,
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego), ("dest", "=", target)), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+
+#[pg_extern]
+fn mr_node_score_superposition(
+    ego: &str,
+    target: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_node_score0(ego, target)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
 #[pg_extern]
 fn mr_node_score(
-    ego: &'static str,
-    target: &'static str,
-) -> core::result::Result<
+    context: &str,
+    ego: &str,
+    target: &str,
+) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
-    Box<dyn std::error::Error + 'static>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = ((("src", "=", ego), ("dest", "=", target)), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    mr_node_score0(ego, target)
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_node_score_linear_sum(
+    ego: &str,
+    target: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego), ("dest", "=", target)), (), "null");
+    rmp_serde::to_vec(&q)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+
+fn mr_scores0(
+    ego: &str,
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego), ), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+
+#[pg_extern]
+fn mr_scores_superposition(
+    ego: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores0(ego)
+        .map(request)?
+        .map(TableIterator::new)
 }
 
 #[pg_extern]
 fn mr_scores(
-    ego: &'static str,
-) -> core::result::Result<
+    context: &str,
+    ego: &str,
+) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
-    Box<dyn std::error::Error + 'static>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = ((("src", "=", ego), ), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    mr_scores0(ego)
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_scores_linear_sum(
+    ego: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego), ), (), "null");
+    rmp_serde::to_vec(&q)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+fn mr_edge0(
+    src: &str,
+    dest: &str,
+    weight: f64,
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error>,
+> {
+    let q = (((src, dest, weight), ), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
 }
 
 #[pg_extern]
 fn mr_edge(
-    src: &'static str,
-    dest: &'static str,
+    src: &str,
+    dest: &str,
     weight: f64,
-) -> core::result::Result<
+) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
-    Box<dyn std::error::Error>,
+    Box<dyn Error>,
 > {
-    let rq = (((src, dest, weight), ), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    mr_edge0(src, dest, weight)
+        .map(request)?
+        .map( TableIterator::new )
 }
 
 #[pg_extern]
+fn mr_edge1(
+    context: &str,
+    src: &str,
+    dest: &str,
+    weight: f64,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error>,
+> {
+    mr_edge0(src, dest, weight)
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
+}
+
+fn mr_delete_edge0(
+    ego: &str,
+    target: &str,
+) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let q = ((("src", "delete", ego), ("dest", "delete", target)), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+#[pg_extern]
 fn mr_delete_edge(
-    ego: &'static str,
-    target: &'static str,
-) -> core::result::Result<&'static str, Box<dyn std::error::Error + 'static>> {
-    let rq = ((("src", "delete", ego), ("dest", "delete", target)), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let _res: Vec<()> = request(&req)?;
-    Ok("Ok")
+    ego: &str,
+    target: &str,
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+    mr_delete_edge0(ego, target)
+        .map(request)?
+        .map(|_: Vec<()>| "Ok")
+}
+
+#[pg_extern]
+fn mr_delete_edge1(
+    context: &str,
+    ego: &str,
+    target: &str,
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+    mr_delete_edge0(ego, target)
+        .map(contexted_request(context))?
+        .map(|_: Vec<()>| "Ok")
+        .map_err(|e| e.into())
+}
+
+fn mr_delete_node0(
+    ego: &str,
+) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let q = ((("src", "delete", ego), ), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
 }
 
 #[pg_extern]
 fn mr_delete_node(
-    ego: &'static str,
-) -> core::result::Result<&'static str, Box<dyn std::error::Error + 'static>> {
-    let rq = ((("src", "delete", ego), ), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let _res: Vec<()> = request(&req)?;
-    Ok("Ok")
+    ego: &str,
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+    mr_delete_node0(ego)
+        .map( request )?
+        .map(|_: Vec<()>| "Ok")
+        .map_err(|e| e.into())
+}
+
+#[pg_extern]
+fn mr_delete_node1(
+    context: &str,
+    ego: &str,
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+    mr_delete_node0(ego)
+        .map(contexted_request(context))?
+        .map(|_: Vec<()>| "Ok")
+        .map_err(|e| e.into())
+}
+
+fn mr_gravity_graph0(
+    ego: &str,
+    focus: &str,
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = (((ego, "gravity", focus), ), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
 }
 
 #[pg_extern]
 fn mr_gravity_graph(
-    ego: &'static str,
-    focus: &'static str,
-) -> core::result::Result<
+    ego: &str,
+    focus: &str,
+) -> Result<
     TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
-    Box<dyn std::error::Error + 'static>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = (((ego, "gravity", focus), ), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    mr_gravity_graph0(ego, focus)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_gravity_graph1(
+    context: &str,
+    ego: &str,
+    focus: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_gravity_graph0(ego, focus)
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
+}
+
+fn mr_gravity_nodes0(
+    ego: &str,
+    focus: &str,
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = (((ego, "gravity_nodes", focus), ), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
 }
 
 #[pg_extern]
 fn mr_gravity_nodes(
-    ego: &'static str,
-    focus: &'static str,
-) -> core::result::Result<
+    ego: &str,
+    focus: &str,
+) -> Result<
     TableIterator<'static, (name!(node, String), name!(weight, f64))>,
-    Box<dyn std::error::Error + 'static>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = (((ego, "gravity_nodes", focus), ), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    mr_gravity_nodes0(ego, focus)
+        .map(request)?
+        .map(TableIterator::new)
 }
 
 #[pg_extern]
-fn mr_for_beacons_global() -> core::result::Result<
+fn mr_gravity_nodes1(
+    context: &str,
+    ego: &str,
+    focus: &str,
+) -> Result<
+    TableIterator<'static, (name!(node, String), name!(weight, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_gravity_nodes0(ego, focus)
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_for_beacons_global() -> Result<
     TableIterator<'static, (name!(ego, String), name!(dest, String), name!(score, f64))>,
-    Box<dyn std::error::Error + 'static>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = ("for_beacons_global", ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    let q = ("for_beacons_global", ());
+    rmp_serde::to_vec(&q)
+        .map(request)?
+        .map(TableIterator::new)
 }
 
+fn mr_nodes0() -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ("nodes", ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+
+
 #[pg_extern]
-fn mr_nodes() -> core::result::Result<
+fn mr_nodes() -> Result<
     TableIterator<'static, (name!(id, String), )>,
-    Box<dyn std::error::Error + 'static>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = ("nodes", ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request::<String>(&req)
-        .map(|v| v.into_iter().map(|s| (s,))); // wrap to single-element tuple
-    res.map(|v| TableIterator::new(v))
+    mr_nodes0()
+        .map(request::<String>)?
+        .map(|v| v.into_iter().map(|s| (s,))) // wrap to single-element tuple
+        .map(TableIterator::new)
 }
 
 #[pg_extern]
-fn mr_edges() -> core::result::Result<
-    TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
-    Box<dyn std::error::Error + 'static>,
+fn mr_nodes1(context: &str) -> Result<
+    TableIterator<'static, (name!(id, String), )>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = ("edges", ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    mr_nodes0()
+        .map(contexted_request(context))?
+        .map(request::<String>)?
+        .map(|v| v.into_iter().map(|s| (s,))) // wrap to single-element tuple
+        .map(TableIterator::new)
+}
+
+fn mr_edges0() -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ("edges", ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+
+#[pg_extern]
+fn mr_edges() -> Result<
+    TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_edges0()
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_edges1(
+    context: &str
+) -> Result<
+    TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_edges0()
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
 }
 
 // connected nodes
-#[pg_extern]
-fn mr_connected(ego: &'static str) -> core::result::Result<
-    TableIterator<'static, (name!(src, String), name!(dest, String))>,
-    Box<dyn std::error::Error + 'static>,
+fn mr_connected0(
+    ego: &str
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
 > {
-    let rq = (((ego, "connected"), ), ());
-    let req = rmp_serde::to_vec(&rq)?;
-    let res = request(&req);
-    res.map(|v| TableIterator::new(v))
+    let q = (((ego, "connected"), ), ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+#[pg_extern]
+fn mr_connected(
+    ego: &str
+) -> Result<
+    TableIterator<'static, (name!(src, String), name!(dest, String))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_connected0(ego)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_connected1(
+    context: &str,
+    ego: &str
+) -> Result<
+    TableIterator<'static, (name!(src, String), name!(dest, String))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_connected0(ego)
+        .map(contexted_request(context))?
+        .map(TableIterator::new)
 }
