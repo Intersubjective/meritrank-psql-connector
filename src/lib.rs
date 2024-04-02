@@ -67,7 +67,7 @@ fn mr_node_score_superposition(
     ego: &str,
     target: &str,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     mr_node_score0(ego, target)
@@ -81,7 +81,7 @@ fn mr_node_score(
     ego: &str,
     target: &str,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     mr_node_score0(ego, target)
@@ -94,7 +94,7 @@ fn mr_node_score_linear_sum(
     ego: &str,
     target: &str,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     let q = ((("src", "=", ego), ("dest", "=", target)), (), "null");
@@ -106,6 +106,9 @@ fn mr_node_score_linear_sum(
 
 fn mr_scores0(
     ego: &str,
+    target_like: &str,  // = ""
+    score_gt: f64,      // = f64::MIN
+    score_gte: bool
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -118,11 +121,14 @@ fn mr_scores0(
 #[pg_extern]
 fn mr_scores_superposition(
     ego: &str,
+    target_like: &str,  // = ""
+    score_gt: f64,      // = f64::MIN
+    score_gte: bool
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego)
+    mr_scores0(ego, target_like, score_gt, score_gte)
         .map(request)?
         .map(TableIterator::new)
 }
@@ -131,11 +137,14 @@ fn mr_scores_superposition(
 fn mr_scores(
     context: &str,
     ego: &str,
+    target_like: &str,  // = ""
+    score_gt: f64,      // = f64::MIN
+    score_gte: bool
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego)
+    mr_scores0(ego, target_like, score_gt, score_gte)
         .map(contexted_request(context))?
         .map(TableIterator::new)
 }
@@ -143,8 +152,11 @@ fn mr_scores(
 #[pg_extern]
 fn mr_scores_linear_sum(
     ego: &str,
+    target_like: &str,  // = ""
+    score_gt: f64,      // = f64::MIN
+    score_gte: bool
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     let q = ((("src", "=", ego), ), (), "null");
@@ -172,7 +184,7 @@ fn mr_edge(
     dest: &str,
     weight: f64,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error>,
 > {
     mr_edge0(src, dest, weight)
@@ -187,7 +199,7 @@ fn mr_edge1(
     dest: &str,
     weight: f64,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error>,
 > {
     mr_edge0(src, dest, weight)
@@ -271,7 +283,7 @@ fn mr_gravity_graph(
     ego: &str,
     focus: &str,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     mr_gravity_graph0(ego, focus)
@@ -285,7 +297,7 @@ fn mr_gravity_graph1(
     ego: &str,
     focus: &str,
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(ego, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     mr_gravity_graph0(ego, focus)
@@ -334,7 +346,7 @@ fn mr_gravity_nodes1(
 
 #[pg_extern]
 fn mr_for_beacons_global() -> Result<
-    TableIterator<'static, (name!(ego, String), name!(dest, String), name!(score, f64))>,
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
     let q = ("for_beacons_global", ());
@@ -422,7 +434,7 @@ fn mr_connected0(
 fn mr_connected(
     ego: &str
 ) -> Result<
-    TableIterator<'static, (name!(src, String), name!(dest, String))>,
+    TableIterator<'static, (name!(source, String), name!(target, String))>,
     Box<dyn Error + 'static>,
 > {
     mr_connected0(ego)
@@ -435,7 +447,7 @@ fn mr_connected1(
     context: &str,
     ego: &str
 ) -> Result<
-    TableIterator<'static, (name!(src, String), name!(dest, String))>,
+    TableIterator<'static, (name!(source, String), name!(target, String))>,
     Box<dyn Error + 'static>,
 > {
     mr_connected0(ego)
