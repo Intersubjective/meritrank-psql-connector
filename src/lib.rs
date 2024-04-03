@@ -108,12 +108,14 @@ fn mr_scores0(
     ego: &str,
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
-    score_gte: bool
+    score_gte: bool,
+    limit: Option<u32>
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
 > {
-    let q = ((("src", "=", ego), ), ());
+    let cmp = if score_gte { ">=" } else { ">" };
+    let q = ((("src", "=", ego), ("target", "like", target_like), ("score", cmp, score_gt), ("limit", limit) ), ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
 }
@@ -123,30 +125,43 @@ fn mr_scores_superposition(
     ego: &str,
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
-    score_gte: bool
+    score_gte: bool,
+    limit: Option<u32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego, target_like, score_gt, score_gte)
+    mr_scores0(ego, target_like, score_gt, score_gte, limit)
         .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_scores_ext(
+    context: &str,
+    ego: &str,
+    target_like: &str,  // = ""
+    score_gt: f64,      // = f64::MIN
+    score_gte: bool,
+    limit: Option<u32>
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores0(ego, target_like, score_gt, score_gte, limit)
+        .map(contexted_request(context))?
         .map(TableIterator::new)
 }
 
 #[pg_extern]
 fn mr_scores(
     context: &str,
-    ego: &str,
-    target_like: &str,  // = ""
-    score_gt: f64,      // = f64::MIN
-    score_gte: bool
+    ego: &str
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego, target_like, score_gt, score_gte)
-        .map(contexted_request(context))?
-        .map(TableIterator::new)
+    mr_scores_ext(context, ego, "", f64::MIN, true, None)
 }
 
 #[pg_extern]
@@ -154,12 +169,14 @@ fn mr_scores_linear_sum(
     ego: &str,
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
-    score_gte: bool
+    score_gte: bool,
+    limit: Option<u32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let q = ((("src", "=", ego), ), (), "null");
+    let cmp = if score_gte { ">=" } else { ">" };
+    let q = ((("src", "=", ego), ("target", "like", target_like), ("score", cmp, score_gt), ("limit", limit)), (), "null");
     rmp_serde::to_vec(&q)
         .map(request)?
         .map(TableIterator::new)
