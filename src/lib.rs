@@ -109,7 +109,7 @@ fn mr_scores0(
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
     score_gte: bool,
-    limit: Option<u32>
+    limit: Option<i32>
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -126,7 +126,7 @@ fn mr_scores_superposition(
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
     score_gte: bool,
-    limit: Option<u32>
+    limit: Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -143,7 +143,7 @@ fn mr_scores_ext(
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
     score_gte: bool,
-    limit: Option<u32>
+    limit: Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -170,7 +170,7 @@ fn mr_scores_linear_sum(
     target_like: &str,  // = ""
     score_gt: f64,      // = f64::MIN
     score_gte: bool,
-    limit: Option<u32>
+    limit: Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
