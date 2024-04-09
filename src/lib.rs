@@ -76,7 +76,7 @@ fn mr_node_score_superposition(
 }
 
 #[pg_extern]
-fn mr_node_score(
+fn mr_node_score1(
     context: &str,
     ego: &str,
     target: &str,
@@ -86,6 +86,20 @@ fn mr_node_score(
 > {
     mr_node_score0(ego, target)
         .map(contexted_request(context))?
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_node_score(
+    ego: &str,
+    target: &str,
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_node_score0(ego, target)
+        .map(request)?
         .map(TableIterator::new)
 }
 
@@ -138,6 +152,22 @@ fn mr_scores_superposition(
 
 #[pg_extern]
 fn mr_scores_ext(
+    ego: &str,
+    target_like: &str,  // = ""
+    score_gt: f64,      // = f64::MIN
+    score_gte: bool,
+    limit: Option<i32>
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores0(ego, target_like, score_gt, score_gte, limit)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_scores_ext1(
     context: &str,
     ego: &str,
     target_like: &str,  // = ""
@@ -150,18 +180,31 @@ fn mr_scores_ext(
 > {
     mr_scores0(ego, target_like, score_gt, score_gte, limit)
         .map(contexted_request(context))?
+        .map(request)?
         .map(TableIterator::new)
 }
 
 #[pg_extern]
 fn mr_scores(
+    ego: &str
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores0(ego, "", f64::MIN, true, None)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_scores1(
     context: &str,
     ego: &str
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores_ext(context, ego, "", f64::MIN, true, None)
+    mr_scores_ext1(context, ego, "", f64::MIN, true, None)
 }
 
 #[pg_extern]
