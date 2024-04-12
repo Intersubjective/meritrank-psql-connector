@@ -120,16 +120,34 @@ fn mr_node_score_linear_sum(
 
 fn mr_scores0(
     ego: &str,
-    target_like: &str,  // = ""
-    score_gt: f64,      // = f64::MIN
-    score_gte: bool,
+    start_with: Option<String>,
+    score_lt: Option<f64>,
+    score_lte: Option<f64>,
+    score_gt: Option<f64>,
+    score_gte: Option<f64>,
     limit: Option<i32>
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
 > {
-    let cmp = if score_gte { ">=" } else { ">" };
-    let q = ((("src", "=", ego), ("target", "like", target_like), ("score", cmp, score_gt), ("limit", limit) ), ());
+    let (gcmp, gt) = match (score_gt, score_gte) {
+        (Some(gt), None) => (">", gt),
+        (None, Some(gte)) => (">=", gte),
+        (None, None) => (">", f64::MIN),
+        _ => return Err(Box::from("either gt or gte allowed!"))
+    };
+    let (_lcmp, _lt) = match (score_lt, score_lte) {
+        (Some(lt), None) => ("<", lt),
+        (None, Some(lte)) => ("<=", lte),
+        (None, None) => ("<", f64::MAX),
+        _ => return Err(Box::from("either lt or lte allowed!"))
+    };
+    let binding = start_with.unwrap_or(String::new());
+    let q = ((("src", "=", ego),
+              ("target", "like", binding.as_str()),
+              ("score", gcmp, score_gt),
+              ("limit", limit) ),
+             ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
 }
@@ -137,61 +155,45 @@ fn mr_scores0(
 #[pg_extern]
 fn mr_scores_superposition(
     ego: &str,
-    target_like: &str,  // = ""
-    score_gt: f64,      // = f64::MIN
-    score_gte: bool,
+    start_with: Option<String>,
+    score_lt: Option<f64>,
+    score_lte: Option<f64>,
+    score_gt: Option<f64>,
+    score_gte: Option<f64>,
     limit: Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego, target_like, score_gt, score_gte, limit)
-        .map(request)?
-        .map(TableIterator::new)
-}
-
-#[pg_extern]
-fn mr_scores_ext(
-    ego: &str,
-    target_like: &str,  // = ""
-    score_gt: f64,      // = f64::MIN
-    score_gte: bool,
-    limit: Option<i32>
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_scores0(ego, target_like, score_gt, score_gte, limit)
-        .map(request)?
-        .map(TableIterator::new)
-}
-
-#[pg_extern]
-fn mr_scores_ext1(
-    context: &str,
-    ego: &str,
-    target_like: &str,  // = ""
-    score_gt: f64,      // = f64::MIN
-    score_gte: bool,
-    limit: Option<i32>
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_scores0(ego, target_like, score_gt, score_gte, limit)
-        .map(contexted_request(context))?
+    mr_scores0(ego,
+               start_with,
+               score_lt, score_lte,
+               score_gt, score_gte,
+               limit
+    )
         .map(request)?
         .map(TableIterator::new)
 }
 
 #[pg_extern]
 fn mr_scores(
-    ego: &str
+    ego: &str,
+    start_with: Option<String>,
+    score_lt: Option<f64>,
+    score_lte: Option<f64>,
+    score_gt: Option<f64>,
+    score_gte: Option<f64>,
+    limit: Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego, "", f64::MIN, true, None)
+    mr_scores0(ego,
+               start_with,
+               score_lt,    score_lte,
+               score_gt, score_gte,
+               limit
+    )
         .map(request)?
         .map(TableIterator::new)
 }
@@ -199,14 +201,52 @@ fn mr_scores(
 #[pg_extern]
 fn mr_scores1(
     context: &str,
+    ego: &str,
+    start_with: Option<String>,
+    score_lt: Option<f64>,
+    score_lte: Option<f64>,
+    score_gt: Option<f64>,
+    score_gte: Option<f64>,
+    limit: Option<i32>
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores0(ego,
+               start_with,
+               score_lt, score_lte,
+               score_gt, score_gte,
+               limit
+    )
+        .map(contexted_request(context))?
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_scores_simple(
     ego: &str
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores_ext1(context, ego, "", f64::MIN, true, None)
+    mr_scores0(ego, None, None, None, None, None, None)
+        .map(request)?
+        .map(TableIterator::new)
 }
 
+#[pg_extern]
+fn mr_scores_simple1(
+    context: &str,
+    ego: &str
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores1(context, ego, None, None, None, None, None, None)
+}
+
+/*
 #[pg_extern]
 fn mr_scores_linear_sum(
     ego: &str,
@@ -224,6 +264,7 @@ fn mr_scores_linear_sum(
         .map(request)?
         .map(TableIterator::new)
 }
+*/
 
 fn mr_edge0(
     src: &str,
