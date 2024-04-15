@@ -118,6 +118,20 @@ fn mr_node_score_linear_sum(
 }
 
 
+fn mr_scores00(
+    ego: &str
+) -> Result<
+    Vec<u8>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", ego),
+              //("target", "like", ""),
+              ),
+             ());
+    rmp_serde::to_vec(&q)
+        .map_err(|e| e.into())
+}
+
 fn mr_scores0(
     ego: &str,
     start_with: Option<String>,
@@ -145,7 +159,7 @@ fn mr_scores0(
     let binding = start_with.unwrap_or(String::new());
     let q = ((("src", "=", ego),
               ("target", "like", binding.as_str()),
-              ("score", gcmp, score_gt),
+              ("score", gcmp, gt),
               ("limit", limit) ),
              ());
     rmp_serde::to_vec(&q)
@@ -230,7 +244,7 @@ fn mr_scores_simple(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego, None, None, None, None, None, None)
+    mr_scores00(ego) //mr_scores0(ego, None, None, None, None, None, None)
         .map(request)?
         .map(TableIterator::new)
 }
