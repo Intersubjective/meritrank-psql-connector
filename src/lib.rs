@@ -150,7 +150,7 @@ fn mr_scores0(
         (None, None) => (">", f64::MIN),
         _ => return Err(Box::from("either gt or gte allowed!"))
     };
-    let (_lcmp, _lt) = match (score_lt, score_lte) {
+    let (lcmp, lt) = match (score_lt, score_lte) {
         (Some(lt), None) => ("<", lt),
         (None, Some(lte)) => ("<=", lte),
         (None, None) => ("<", f64::MAX),
@@ -160,6 +160,7 @@ fn mr_scores0(
     let q = ((("src", "=", ego),
               ("target", "like", binding.as_str()),
               ("score", gcmp, gt),
+              ("score", lcmp, lt),
               ("limit", limit) ),
              ());
     rmp_serde::to_vec(&q)
