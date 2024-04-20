@@ -15,6 +15,8 @@ lazy_static! {
         var("RUST_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
 }
 
+const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
+
 fn request<T: for<'a> Deserialize<'a>>(
     q: Vec<u8>,
 ) -> Result<Vec<T>, Box<dyn Error + 'static>> {
@@ -34,6 +36,26 @@ fn request<T: for<'a> Deserialize<'a>>(
 #[pg_extern]
 fn mr_service_url() -> &'static str {
     &SERVICE_URL
+}
+
+#[pg_extern]
+fn mr_connector() ->  &'static str { &VERSION.unwrap_or("unknown") }
+
+#[pg_extern]
+fn mr_service() -> &'static str {
+    let q = ("ver");
+    let client = Socket::new(Protocol::Req0)
+        .unwrap();
+    client.dial(&SERVICE_URL)
+        .unwrap();
+    client
+        .send(Message::from(q.as_slice()))
+        .unwrap();
+    let msg: Message = client.recv()
+        .unwrap();
+    let slice: &[u8] = msg.as_slice();
+
+    str:f_utf8(slice).unwrap()
 }
 
 fn contexted_request<T: for<'a> Deserialize<'a>>(
@@ -157,7 +179,8 @@ fn mr_scores0(
         _ => return Err(Box::from("either lt or lte allowed!"))
     };
     let binding = start_with.unwrap_or(String::new());
-    let q = ((("src", "=", ego),
+    let q = ((
+              ("src", "=", ego),
               ("target", "like", binding.as_str()),
               ("score", gcmp, gt),
               ("score", lcmp, lt),
@@ -280,6 +303,33 @@ fn mr_scores_linear_sum(
         .map(TableIterator::new)
 }
 */
+
+#[pg_extern]
+fn mr_scores_linear_sum(
+    src: &str,
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", src), ), (), "null");
+    rmp_serde::to_vec(&q)
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+#[pg_extern]
+fn mr_score_linear_sum(
+    src: &str,
+    dest: &str
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    let q = ((("src", "=", src), ("dest", "=", dest)), (), "null");
+    rmp_serde::to_vec(&q)
+        .map(request)?
+        .map(TableIterator::new)
+}
 
 fn mr_edge0(
     src: &str,
