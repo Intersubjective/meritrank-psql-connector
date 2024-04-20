@@ -43,19 +43,20 @@ fn mr_connector() ->  &'static str { &VERSION.unwrap_or("unknown") }
 
 #[pg_extern]
 fn mr_service() -> &'static str {
-    let q = ("ver");
+    let q = "ver";
     let client = Socket::new(Protocol::Req0)
         .unwrap();
     client.dial(&SERVICE_URL)
         .unwrap();
     client
-        .send(Message::from(q.as_slice()))
+        .send(Message::from(q.as_bytes()))
         .unwrap();
     let msg: Message = client.recv()
         .unwrap();
     let slice: &[u8] = msg.as_slice();
 
-    str:f_utf8(slice).unwrap()
+    let s: &str = std::str::from_utf8(slice).unwrap();
+    s.to_string().leak() // Rust 1.72.0
 }
 
 fn contexted_request<T: for<'a> Deserialize<'a>>(
