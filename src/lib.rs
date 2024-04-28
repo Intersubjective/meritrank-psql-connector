@@ -68,8 +68,7 @@ fn contexted_request<T: for<'a> Deserialize<'a>>(
     move |payload: Vec<u8>| {
         //let q: (&str, &str, &[u8]) = ("context", context, payload.as_slice()); // why not working?
         let q: (&str, &str, Vec<u8>) = ("context", context, payload);
-        rmp_serde::to_vec( & q)
-            .map(request)?
+        rmp_serde::to_vec( & q).map(request)?
     }
 }
 
@@ -107,8 +106,9 @@ fn mr_node_score(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_node_score0(ego, target)
-        .map(contexted_request(context))?
+    let ctx = mr_node_score0(ego, target);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
+    ctx
         .map(request)?
         .map(TableIterator::new)
 }
@@ -257,14 +257,15 @@ fn mr_scores(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego,
+    let ctx = mr_scores0(ego,
                hide_personal,
                start_with,
                score_lt, score_lte,
                score_gt, score_gte,
                limit
-    )
-        .map(contexted_request(context))?
+    );
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
+    ctx
         .map(request)?
         .map(TableIterator::new)
 }
@@ -376,8 +377,10 @@ fn mr_edge(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error>,
 > {
-    mr_edge0(src, dest, weight)
-        .map(contexted_request(context))?
+    let ctx = mr_edge0(src, dest, weight);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(TableIterator::new)
 }
 
@@ -405,8 +408,10 @@ fn mr_delete_edge(
     ego: &str,
     target: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-    mr_delete_edge0(ego, target)
-        .map(contexted_request(context))?
+    let ctx = mr_delete_edge0(ego, target);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(|_: Vec<()>| "Ok")
         .map_err(|e| e.into())
 }
@@ -434,8 +439,10 @@ fn mr_delete_node(
     context: &str,
     ego: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-    mr_delete_node0(ego)
-        .map(contexted_request(context))?
+    let ctx = mr_delete_node0(ego);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(|_: Vec<()>| "Ok")
         .map_err(|e| e.into())
 }
@@ -474,8 +481,10 @@ fn mr_gravity_graph(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_gravity_graph0(ego, focus)
-        .map(contexted_request(context))?
+    let ctx = mr_gravity_graph0(ego, focus);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(TableIterator::new)
 }
 
@@ -513,8 +522,10 @@ fn mr_gravity_nodes(
     TableIterator<'static, (name!(node, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_gravity_nodes0(ego, focus)
-        .map(contexted_request(context))?
+    let ctx = mr_gravity_nodes0(ego, focus);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(TableIterator::new)
 }
 
@@ -555,8 +566,9 @@ fn mr_nodes(context: &str) -> Result<
     TableIterator<'static, (name!(id, String), )>,
     Box<dyn Error + 'static>,
 > {
-    mr_nodes0()
-        .map(contexted_request(context))?
+    let ctx = mr_nodes0();
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
+    ctx
         .map(request::<String>)?
         .map(|v| v.into_iter().map(|s| (s,))) // wrap to single-element tuple
         .map(TableIterator::new)
@@ -588,8 +600,10 @@ fn mr_edges(
     TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_edges0()
-        .map(contexted_request(context))?
+    let ctx = mr_edges0();
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(TableIterator::new)
 }
 
@@ -624,7 +638,9 @@ fn mr_connected(
     TableIterator<'static, (name!(source, String), name!(target, String))>,
     Box<dyn Error + 'static>,
 > {
-    mr_connected0(ego)
-        .map(contexted_request(context))?
+    let ctx = mr_connected0(ego);
+    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
+    ctx
+        .map(request)?
         .map(TableIterator::new)
 }
