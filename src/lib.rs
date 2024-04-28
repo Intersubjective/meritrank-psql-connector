@@ -99,7 +99,7 @@ fn mr_node_score_superposition(
 }
 
 #[pg_extern]
-fn mr_node_score1(
+fn mr_node_score(
     context: &str,
     ego: &str,
     target: &str,
@@ -113,8 +113,8 @@ fn mr_node_score1(
         .map(TableIterator::new)
 }
 
-#[pg_extern]
-fn mr_node_score(
+//#[pg_extern]
+fn mr_node_score1(
     ego: &str,
     target: &str,
 ) -> Result<
@@ -157,6 +157,7 @@ fn mr_scores00(
 
 fn mr_scores0(
     ego: &str,
+    hide_personal: bool,
     start_with: Option<String>,
     score_lt: Option<f64>,
     score_lte: Option<f64>,
@@ -183,9 +184,11 @@ fn mr_scores0(
     let q = ((
               ("src", "=", ego),
               ("target", "like", binding.as_str()),
+              ("hide_personal", hide_personal),
               ("score", gcmp, gt),
               ("score", lcmp, lt),
-              ("limit", limit) ),
+              ("limit", limit)
+             ),
              ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
@@ -205,6 +208,31 @@ fn mr_scores_superposition(
     Box<dyn Error + 'static>,
 > {
     mr_scores0(ego,
+               false,
+               start_with,
+               score_lt, score_lte,
+               score_gt, score_gte,
+               limit
+    )
+        .map(request)?
+        .map(TableIterator::new)
+}
+
+//#[pg_extern]
+fn mr_scores1(
+    ego: &str,
+    start_with: Option<String>,
+    score_lt: Option<f64>,
+    score_lte: Option<f64>,
+    score_gt: Option<f64>,
+    score_gte: Option<f64>,
+    limit: Option<i32>
+) -> Result<
+    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+    Box<dyn Error + 'static>,
+> {
+    mr_scores0(ego,
+               false,
                start_with,
                score_lt, score_lte,
                score_gt, score_gte,
@@ -216,31 +244,9 @@ fn mr_scores_superposition(
 
 #[pg_extern]
 fn mr_scores(
-    ego: &str,
-    start_with: Option<String>,
-    score_lt: Option<f64>,
-    score_lte: Option<f64>,
-    score_gt: Option<f64>,
-    score_gte: Option<f64>,
-    limit: Option<i32>
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_scores0(ego,
-               start_with,
-               score_lt,    score_lte,
-               score_gt, score_gte,
-               limit
-    )
-        .map(request)?
-        .map(TableIterator::new)
-}
-
-#[pg_extern]
-fn mr_scores1(
     context: &str,
     ego: &str,
+    hide_personal: bool,
     start_with: Option<String>,
     score_lt: Option<f64>,
     score_lte: Option<f64>,
@@ -252,6 +258,7 @@ fn mr_scores1(
     Box<dyn Error + 'static>,
 > {
     mr_scores0(ego,
+               hide_personal,
                start_with,
                score_lt, score_lte,
                score_gt, score_gte,
@@ -262,8 +269,8 @@ fn mr_scores1(
         .map(TableIterator::new)
 }
 
-#[pg_extern]
-fn mr_scores_simple(
+//#[pg_extern]
+fn mr_scores_simple1(
     ego: &str
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
@@ -274,15 +281,15 @@ fn mr_scores_simple(
         .map(TableIterator::new)
 }
 
-#[pg_extern]
-fn mr_scores_simple1(
+//#[pg_extern]
+fn mr_scores_simple(
     context: &str,
     ego: &str
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores1(context, ego, None, None, None, None, None, None)
+    mr_scores(context,  ego, false,  None, None, None, None, None, None)
 }
 
 /*
@@ -345,8 +352,8 @@ fn mr_edge0(
         .map_err(|e| e.into())
 }
 
-#[pg_extern]
-fn mr_edge(
+//#[pg_extern]
+fn mr_edge1(
     src: &str,
     dest: &str,
     weight: f64,
@@ -360,7 +367,7 @@ fn mr_edge(
 }
 
 #[pg_extern]
-fn mr_edge1(
+fn mr_edge(
     context: &str,
     src: &str,
     dest: &str,
@@ -382,8 +389,8 @@ fn mr_delete_edge0(
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
 }
-#[pg_extern]
-fn mr_delete_edge(
+//#[pg_extern]
+fn mr_delete_edge1(
     ego: &str,
     target: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
@@ -393,7 +400,7 @@ fn mr_delete_edge(
 }
 
 #[pg_extern]
-fn mr_delete_edge1(
+fn mr_delete_edge(
     context: &str,
     ego: &str,
     target: &str,
@@ -412,8 +419,8 @@ fn mr_delete_node0(
         .map_err(|e| e.into())
 }
 
-#[pg_extern]
-fn mr_delete_node(
+//#[pg_extern]
+fn mr_delete_node1(
     ego: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     mr_delete_node0(ego)
@@ -423,7 +430,7 @@ fn mr_delete_node(
 }
 
 #[pg_extern]
-fn mr_delete_node1(
+fn mr_delete_node(
     context: &str,
     ego: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
@@ -445,8 +452,8 @@ fn mr_gravity_graph0(
         .map_err(|e| e.into())
 }
 
-#[pg_extern]
-fn mr_gravity_graph(
+//#[pg_extern]
+fn mr_gravity_graph1(
     ego: &str,
     focus: &str,
 ) -> Result<
@@ -459,7 +466,7 @@ fn mr_gravity_graph(
 }
 
 #[pg_extern]
-fn mr_gravity_graph1(
+fn mr_gravity_graph(
     context: &str,
     ego: &str,
     focus: &str,
@@ -484,8 +491,8 @@ fn mr_gravity_nodes0(
         .map_err(|e| e.into())
 }
 
-#[pg_extern]
-fn mr_gravity_nodes(
+//#[pg_extern]
+fn mr_gravity_nodes1(
     ego: &str,
     focus: &str,
 ) -> Result<
@@ -498,7 +505,7 @@ fn mr_gravity_nodes(
 }
 
 #[pg_extern]
-fn mr_gravity_nodes1(
+fn mr_gravity_nodes(
     context: &str,
     ego: &str,
     focus: &str,
@@ -532,8 +539,8 @@ fn mr_nodes0() -> Result<
 }
 
 
-#[pg_extern]
-fn mr_nodes() -> Result<
+//#[pg_extern]
+fn mr_nodes1() -> Result<
     TableIterator<'static, (name!(id, String), )>,
     Box<dyn Error + 'static>,
 > {
@@ -544,7 +551,7 @@ fn mr_nodes() -> Result<
 }
 
 #[pg_extern]
-fn mr_nodes1(context: &str) -> Result<
+fn mr_nodes(context: &str) -> Result<
     TableIterator<'static, (name!(id, String), )>,
     Box<dyn Error + 'static>,
 > {
@@ -564,8 +571,8 @@ fn mr_edges0() -> Result<
         .map_err(|e| e.into())
 }
 
-#[pg_extern]
-fn mr_edges() -> Result<
+//#[pg_extern]
+fn mr_edges1() -> Result<
     TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
@@ -575,7 +582,7 @@ fn mr_edges() -> Result<
 }
 
 #[pg_extern]
-fn mr_edges1(
+fn mr_edges(
     context: &str
 ) -> Result<
     TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
@@ -597,8 +604,8 @@ fn mr_connected0(
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
 }
-#[pg_extern]
-fn mr_connected(
+//#[pg_extern]
+fn mr_connected1(
     ego: &str
 ) -> Result<
     TableIterator<'static, (name!(source, String), name!(target, String))>,
@@ -610,7 +617,7 @@ fn mr_connected(
 }
 
 #[pg_extern]
-fn mr_connected1(
+fn mr_connected(
     context: &str,
     ego: &str
 ) -> Result<
