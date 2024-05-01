@@ -168,17 +168,17 @@ fn mr_scores0(
     Vec<u8>,
     Box<dyn Error + 'static>,
 > {
-    let (gcmp, gt) = match (score_gt, score_gte) {
-        (Some(gt), None) => (">", gt),
-        (None, Some(gte)) => (">=", gte),
-        (None, None) => (">", f64::MIN),
-        _ => return Err(Box::from("either gt or gte allowed!"))
-    };
     let (lcmp, lt) = match (score_lt, score_lte) {
         (Some(lt), None) => ("<", lt),
         (None, Some(lte)) => ("<=", lte),
-        (None, None) => ("<", f64::MAX),
+        (None, None) => ("<", f64::MIN),
         _ => return Err(Box::from("either lt or lte allowed!"))
+    };
+    let (gcmp, gt) = match (score_gt, score_gte) {
+        (Some(gt), None) => (">", gt),
+        (None, Some(gte)) => (">=", gte),
+        (None, None) => (">", f64::MAX),
+        _ => return Err(Box::from("either gt or gte allowed!"))
     };
     let binding = start_with.unwrap_or(String::new());
     let q = ((
@@ -257,12 +257,13 @@ fn mr_scores(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_scores0(ego,
-               hide_personal,
-               start_with,
-               score_lt, score_lte,
-               score_gt, score_gte,
-               limit
+    let ctx = mr_scores0(
+        ego,
+        hide_personal,
+        start_with,
+        score_lt, score_lte,
+        score_gt, score_gte,
+        limit
     );
     let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
     ctx
