@@ -1,0 +1,31 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch: 
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run the service
+      run: |
+        git clone --branch dev --depth 1 https://github.com/Intersubjective/meritrank-service-rust.git
+        cd meritrank-service-rust
+        cargo build
+        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
+        cargo run &
+    - name: Build the connector
+      run: |
+        sudo apt install build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache pkg-config
+        cargo install --locked cargo-pgrx
+        cargo pgrx init
+        cargo build
+    - name: Do the tests
+      run: |
+        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
+        cargo pgrx test

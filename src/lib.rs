@@ -56,16 +56,18 @@ fn mr_service_url() -> &'static str {
 fn mr_connector() ->  &'static str { &VERSION.unwrap_or("unknown") }
 
 fn mr_service0() -> Result<String, Box<dyn Error + 'static>> {
+    //  FIXME
+    //  Code duplication with `fn request()`
     let q = "ver";
     let client = Socket::new(Protocol::Req0)?;
     client.dial(&SERVICE_URL)?;
-    client.send(Message::from(q.as_bytes()))
+    client.send(Message::from(rmp_serde::to_vec(&q)?.as_slice()))
         .map_err(|(_, err)| err)?;
     let msg: Message = client.recv()?;
     let slice: &[u8] = msg.as_slice();
 
-    let s: &str = std::str::from_utf8(slice)?;
-    Ok( s.to_string() ) // Rust 1.72.0
+    let s: String = rmp_serde::from_slice(slice)?;
+    Ok( s )
 }
 #[pg_extern]
 fn mr_service() -> String {
@@ -660,4 +662,32 @@ fn mr_connected(
     ctx
         .map(request)?
         .map(TableIterator::new)
+}
+
+//
+//  Testing
+//
+
+#[cfg(any(test, feature = "pg_test"))]
+#[pg_schema]
+mod tests {
+    use pgrx::prelude::*;
+
+    #[pg_test]
+    fn test_service() {
+        //  FIXME
+        //  Hardcoded service version
+        assert_eq!(crate::mr_service().as_str(), "0.2.2");
+    }
+
+}
+
+#[cfg(test)]
+pub mod pg_test {
+    pub fn setup(_options: Vec<&str>) {
+    }
+
+    pub fn postgresql_conf_options() -> Vec<&'static str> {
+        vec![]
+    }
 }
