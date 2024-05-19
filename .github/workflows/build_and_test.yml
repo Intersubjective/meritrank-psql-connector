@@ -18,12 +18,9 @@ jobs:
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
         sudo apt-get update
         sudo apt-get install -y postgresql-16 postgresql-server-dev-16
-    - name: Prepare postgres env
+    - name: Prepare env
       run: |
-        sudo mkdir -p /home/postgres
-        sudo chown postgres:postgres /home/postgres
-        sudo su - postgres -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /home/postgres/.profile"
-        sudo su - postgres -c "echo \$RUST_SERVICE_URL"
+        sudo su - root -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
     - name: Build the connector
       run: |
         cargo install --locked cargo-pgrx
@@ -34,7 +31,6 @@ jobs:
         git clone --branch dev --depth 1 https://github.com/Intersubjective/meritrank-service-rust.git
         cd meritrank-service-rust
         cargo build
-        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
         cargo run >/dev/null 2>&1 &
     - name: Do the tests
       run: |
