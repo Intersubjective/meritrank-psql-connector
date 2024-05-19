@@ -32,5 +32,5 @@ jobs:
         cargo build
     - name: Do the tests
       run: |
-        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
+        su - postgres -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /home/postgres/.profile"
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
