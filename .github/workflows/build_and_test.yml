@@ -12,25 +12,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Run the service
-      run: |
-        git clone --branch dev --depth 1 https://github.com/Intersubjective/meritrank-service-rust.git
-        cd meritrank-service-rust
-        cargo build
-        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
-        cargo run &
     - name: Setup PostgreSQL 16
       run: |
         sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
         sudo apt-get update
         sudo apt-get install -y postgresql-16 postgresql-server-dev-16
+    - name: Prepare postgres env
+      run: |
+        sudo mkdir -p /home/postgres
+        sudo chown postgres:postgres /home/postgres
+        sudo su - postgres -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /home/postgres/.profile"        
     - name: Build the connector
       run: |
         cargo install --locked cargo-pgrx
         cargo pgrx init --pg16 pg_config
         cargo build
+    - name: Checkout and run the service
+      run: |
+        git clone --branch dev --depth 1 https://github.com/Intersubjective/meritrank-service-rust.git
+        cd meritrank-service-rust
+        cargo build
+        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
+        cargo run >/dev/null 2>&1 &
     - name: Do the tests
       run: |
-        sudo su - postgres -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /home/postgres/.profile"
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
