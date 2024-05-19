@@ -33,4 +33,4 @@ jobs:
     - name: Do the tests
       run: |
         export RUST_SERVICE_URL=tcp://127.0.0.1:10444
-        sudo cargo pgrx test
+        cargo pgrx test --runas postgres
