@@ -1,5 +1,15 @@
+//  TODO
+//
+//  - Broken functions:
+//
+//  mr_for_beacons_global
+//  ERROR:  IO error while reading marker: failed to fill whole buffer
+//
+
 use lazy_static::lazy_static;
 use nng::*;
+use nng::options::{Options, RecvTimeout};
+use std::time::Duration;
 use pgrx::iter::TableIterator;
 use pgrx::*;
 use serde::de::Deserialize;
@@ -17,10 +27,13 @@ lazy_static! {
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
+const RECV_TIMEOUT_MSEC : u64 = 10000;
+
 fn request<T: for<'a> Deserialize<'a>>(
     q: Vec<u8>,
 ) -> Result<Vec<T>, Box<dyn Error + 'static>> {
     let client = Socket::new(Protocol::Req0)?;
+    client.set_opt::<RecvTimeout>(Some(Duration::from_millis(RECV_TIMEOUT_MSEC)))?;
     client.dial(&SERVICE_URL)?;
     client
         .send(Message::from(q.as_slice()))
@@ -33,16 +46,19 @@ fn request<T: for<'a> Deserialize<'a>>(
     })
 }
 
-fn contexted_request<T: for<'a> Deserialize<'a>>(
+fn contexted_request(
     context: &str
 ) -> impl Fn(Vec<u8>) -> Result<
-    Vec<T>,
+    Vec<u8>,
     Box<dyn Error + 'static>,
 > + '_ {
     move |payload: Vec<u8>| {
         //let q: (&str, &str, &[u8]) = ("context", context, payload.as_slice()); // why not working?
         let q: (&str, &str, Vec<u8>) = ("context", context, payload);
-        rmp_serde::to_vec( & q).map(request)?
+        match rmp_serde::to_vec(&q) {
+            Ok(x)  => Ok(x),
+            Err(x) => Err(x.into())
+        }
     }
 }
 
@@ -60,6 +76,7 @@ fn mr_service0() -> Result<String, Box<dyn Error + 'static>> {
     //  Code duplication with `fn request()`
     let q = "ver";
     let client = Socket::new(Protocol::Req0)?;
+    client.set_opt::<RecvTimeout>(Some(Duration::from_millis(RECV_TIMEOUT_MSEC)))?;
     client.dial(&SERVICE_URL)?;
     client.send(Message::from(rmp_serde::to_vec(&q)?.as_slice()))
         .map_err(|(_, err)| err)?;
@@ -113,9 +130,9 @@ fn mr_node_score(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_node_score0(ego, target);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
-    ctx
+    let payload = mr_node_score0(ego, target);
+    let payload = if context.is_empty() { payload } else { payload.map(contexted_request(context)).unwrap() };
+    payload
         .map(request)?
         .map(TableIterator::new)
 }
@@ -264,7 +281,7 @@ fn mr_scores(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_scores0(
+    let payload = mr_scores0(
         ego,
         hide_personal,
         start_with,
@@ -272,8 +289,8 @@ fn mr_scores(
         score_gt, score_gte,
         limit
     );
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
-    ctx
+    let payload = if context.is_empty() { payload } else { payload.map(contexted_request(context)).unwrap() };
+    payload
         .map(request)?
         .map(TableIterator::new)
 }
@@ -675,9 +692,12 @@ mod tests {
 
     #[pg_test]
     fn test_service() {
-        //  FIXME
-        //  Hardcoded service version
-        assert_eq!(crate::mr_service().as_str(), "0.2.2");
+        let ver = crate::mr_service();
+
+        //  check of ver is in form "X.Y.Z"
+        assert_eq!(ver.split(".").map(|x|
+            x.parse::<u32>().unwrap()
+        ).count(), 3);
     }
 
     #[pg_test]
