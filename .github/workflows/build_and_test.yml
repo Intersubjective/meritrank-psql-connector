@@ -23,7 +23,7 @@ jobs:
       run: |
         sudo apt install build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache pkg-config
         cargo install --locked cargo-pgrx
-        cargo pgrx init
+        cargo pgrx init --pg16 download
         cargo build
     - name: Do the tests
       run: |
