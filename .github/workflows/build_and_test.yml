@@ -19,9 +19,12 @@ jobs:
         cargo build
         export RUST_SERVICE_URL=tcp://127.0.0.1:10444
         cargo run &
+    - name: Setup PostgreSQL 16
+      uses: tj-actions/install-postgresql@v3
+      with:
+        postgresql-version: 16
     - name: Build the connector
       run: |
-        sudo apt install postgresql16 postgresql16-dev
         cargo install --locked cargo-pgrx
         cargo pgrx init --pg16 pg_config
         cargo build
