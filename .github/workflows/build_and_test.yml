@@ -22,7 +22,8 @@ jobs:
       run: |
         sudo mkdir -p /home/postgres
         sudo chown postgres:postgres /home/postgres
-        sudo su - postgres -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /home/postgres/.profile"        
+        sudo su - postgres -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /home/postgres/.profile"
+        sudo su - postgres -c "echo \$RUST_SERVICE_URL"
     - name: Build the connector
       run: |
         cargo install --locked cargo-pgrx

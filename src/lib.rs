@@ -692,6 +692,8 @@ mod tests {
 
     #[pg_test]
     fn test_service() {
+        println!("Rust service URL: {}", super::SERVICE_URL.as_str());
+
         let ver = crate::mr_service();
 
         //  check of ver is in form "X.Y.Z"
