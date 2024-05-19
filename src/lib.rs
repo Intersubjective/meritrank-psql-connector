@@ -680,6 +680,31 @@ mod tests {
         assert_eq!(crate::mr_service().as_str(), "0.2.2");
     }
 
+    #[pg_test]
+    fn test_edge_uncontexted() {
+        let res = crate::mr_put_edge("U1", "U2", 1.0, "").unwrap();
+
+        let n = res.map(|x| {
+            assert_eq!(x.0, "U1");
+            assert_eq!(x.1, "U2");
+            assert_eq!(x.2, 1.0);
+        }).count();
+
+        assert_eq!(n, 1);
+    }
+
+    #[pg_test]
+    fn test_edge_contexted() {
+        let res = crate::mr_put_edge("U1", "U2", 1.0, "X").unwrap();
+        
+        let n = res.map(|x| {
+            assert_eq!(x.0, "U1");
+            assert_eq!(x.1, "U2");
+            assert_eq!(x.2, 1.0);
+        }).count();
+
+        assert_eq!(n, 1);
+    }
 }
 
 #[cfg(test)]
