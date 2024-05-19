@@ -21,9 +21,9 @@ jobs:
         cargo run &
     - name: Build the connector
       run: |
-        sudo apt install build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache pkg-config
+        sudo apt install postgresql16 postgresql16-dev
         cargo install --locked cargo-pgrx
-        cargo pgrx init --pg16 download
+        cargo pgrx init --pg16 pg_config
         cargo build
     - name: Do the tests
       run: |

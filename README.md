@@ -22,7 +22,7 @@ export RUST_SERVICE_URL=tcp://127.0.0.1:10444
 cd ..
 git clone https://github.com/Intersubjective/meritrank-service-rust.git
 cd meritrank-service-rust
-cargo run
+cargo run >log.txt 2>&1 &
 cd ../meritrank-psql-connector
 ```
 
