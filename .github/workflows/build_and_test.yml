@@ -35,4 +35,5 @@ jobs:
         cargo run >/dev/null 2>&1 &
     - name: Do the tests
       run: |
+        export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx

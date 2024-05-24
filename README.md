@@ -34,9 +34,10 @@ cargo install --locked cargo-pgrx
 cargo pgrx init 
 ```
 
-- Run automatic tests
+- Run automatic tests. Note that tests must be run sequentially.
 
 ```sh
+export RUST_TEST_THREADS=1
 cargo pgrx test
 ```
 
