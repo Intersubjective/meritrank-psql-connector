@@ -137,19 +137,6 @@ fn mr_node_score(
         .map(TableIterator::new)
 }
 
-//#[pg_extern]
-fn mr_node_score1(
-    ego: &str,
-    target: &str,
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_node_score0(ego, target)
-        .map(request)?
-        .map(TableIterator::new)
-}
-
 #[pg_extern]
 fn mr_node_score_linear_sum(
     ego: &str,
@@ -164,20 +151,6 @@ fn mr_node_score_linear_sum(
         .map(TableIterator::new)
 }
 
-
-fn mr_scores00(
-    ego: &str
-) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = ((("src", "=", ego),
-              //("target", "like", ""),
-              ),
-             ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
 
 fn mr_scores0(
     ego: &str,
@@ -242,30 +215,6 @@ fn mr_scores_superposition(
         .map(TableIterator::new)
 }
 
-//#[pg_extern]
-fn mr_scores1(
-    ego: &str,
-    start_with: Option<String>,
-    score_lt: Option<f64>,
-    score_lte: Option<f64>,
-    score_gt: Option<f64>,
-    score_gte: Option<f64>,
-    limit: Option<i32>
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_scores0(ego,
-               false,
-               start_with,
-               score_lt, score_lte,
-               score_gt, score_gte,
-               limit
-    )
-        .map(request)?
-        .map(TableIterator::new)
-}
-
 #[pg_extern]
 fn mr_scores(
     ego: &str,
@@ -294,49 +243,6 @@ fn mr_scores(
         .map(request)?
         .map(TableIterator::new)
 }
-
-//#[pg_extern]
-fn mr_scores_simple1(
-    ego: &str
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_scores00(ego)
-        .map(request)?
-        .map(TableIterator::new)
-}
-
-//#[pg_extern]
-fn mr_scores_simple(
-    ego: &str,
-    context: &str,
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_scores( ego, false,  context, None, None, None, None, None, None)
-}
-
-/*
-#[pg_extern]
-fn mr_scores_linear_sum(
-    ego: &str,
-    target_like: &str,  // = ""
-    score_gt: f64,      // = f64::MIN
-    score_gte: bool,
-    limit: Option<i32>
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    let cmp = if score_gte { ">=" } else { ">" };
-    let q = ((("src", "=", ego), ("target", "like", target_like), ("score", cmp, score_gt), ("limit", limit)), (), "null");
-    rmp_serde::to_vec(&q)
-        .map(request)?
-        .map(TableIterator::new)
-}
-*/
 
 #[pg_extern]
 fn mr_scores_linear_sum(
@@ -379,20 +285,6 @@ fn mr_put_edge0(
         .map_err(|e| e.into())
 }
 
-//#[pg_extern]
-fn mr_put_edge1(
-    src: &str,
-    dest: &str,
-    weight: f64,
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error>,
-> {
-    mr_put_edge0(src, dest, weight)
-        .map(request)?
-        .map( TableIterator::new )
-}
-
 #[pg_extern]
 fn mr_put_edge(
     src: &str,
@@ -418,15 +310,6 @@ fn mr_delete_edge0(
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
 }
-//#[pg_extern]
-fn mr_delete_edge1(
-    ego: &str,
-    target: &str,
-) -> Result<&'static str, Box<dyn Error + 'static>> {
-    mr_delete_edge0(ego, target)
-        .map(request)?
-        .map(|_: Vec<()>| "Ok")
-}
 
 #[pg_extern]
 fn mr_delete_edge(
@@ -447,16 +330,6 @@ fn mr_delete_node0(
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
     let q = ((("src", "delete", ego), ), ());
     rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
-
-//#[pg_extern]
-fn mr_delete_node1(
-    ego: &str,
-) -> Result<&'static str, Box<dyn Error + 'static>> {
-    mr_delete_node0(ego)
-        .map( request )?
-        .map(|_: Vec<()>| "Ok")
         .map_err(|e| e.into())
 }
 
@@ -486,19 +359,6 @@ fn mr_graph0(
     let q = (((ego, "gravity", focus), positive_only, limit), ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
-}
-
-//#[pg_extern]
-fn mr_graph1(
-    ego: &str,
-    focus: &str,
-) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_graph0(ego, focus, true, Some(3))
-        .map(request)?
-        .map(TableIterator::new)
 }
 
 #[pg_extern]
@@ -531,19 +391,6 @@ fn mr_nodes0(
     let q = (((ego, "gravity_nodes", focus), positive_only, limit), ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
-}
-
-//#[pg_extern]
-fn mr_nodes1(
-    ego: &str,
-    focus: &str,
-) -> Result<
-    TableIterator<'static, (name!(node, String), name!(weight, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_nodes0(ego, focus, false, Some(i32::MAX))
-        .map(request)?
-        .map(TableIterator::new)
 }
 
 #[pg_extern]
@@ -586,17 +433,6 @@ fn mr_nodelist0() -> Result<
         .map_err(|e| e.into())
 }
 
-//#[pg_extern]
-fn mr_nodelist1() -> Result<
-    TableIterator<'static, (name!(id, String), )>,
-    Box<dyn Error + 'static>,
-> {
-    mr_nodelist0()
-        .map(request::<String>)?
-        .map(|v| v.into_iter().map(|s| (s,))) // wrap to single-element tuple
-        .map(TableIterator::new)
-}
-
 #[pg_extern]
 fn mr_nodelist(context: &str) -> Result<
     TableIterator<'static, (name!(id, String), )>,
@@ -617,16 +453,6 @@ fn mr_edgelist0() -> Result<
     let q = ("edges", ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
-}
-
-//#[pg_extern]
-fn mr_edgelist1() -> Result<
-    TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_edgelist0()
-        .map(request)?
-        .map(TableIterator::new)
 }
 
 #[pg_extern]
@@ -653,17 +479,6 @@ fn mr_connected0(
     let q = (((ego, "connected"), ), ());
     rmp_serde::to_vec(&q)
         .map_err(|e| e.into())
-}
-//#[pg_extern]
-fn mr_connected1(
-    ego: &str
-) -> Result<
-    TableIterator<'static, (name!(source, String), name!(target, String))>,
-    Box<dyn Error + 'static>,
-> {
-    mr_connected0(ego)
-        .map(request)?
-        .map(TableIterator::new)
 }
 
 #[pg_extern]
@@ -713,6 +528,8 @@ mod tests {
         }).count();
 
         assert_eq!(n, 1);
+
+        let _ = crate::mr_delete_edge("U1", "U2", "");
     }
 
     #[pg_test]
@@ -726,6 +543,71 @@ mod tests {
         }).count();
 
         assert_eq!(n, 1);
+
+        let _ = crate::mr_delete_edge("U1", "U2", "X");
+    }
+
+    #[pg_test]
+    fn test_null_context_is_sum() {
+        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X");
+        let _ = crate::mr_put_edge("U1", "U2", 2.0, "Y");
+
+        let res = crate::mr_edgelist("").unwrap();
+
+        let n = res.map(|x| {
+            assert_eq!(x.0, "U1");
+            assert_eq!(x.1, "U2");
+            assert_eq!(x.2, 3.0);
+        }).count();
+
+        assert_eq!(n, 1);
+
+        let _ = crate::mr_delete_edge("U1", "U2", "X");
+        let _ = crate::mr_delete_edge("U1", "U2", "Y");
+    }
+
+
+    #[pg_test]
+    fn test_delete_contexted_edge() {
+        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X");
+        let _ = crate::mr_put_edge("U1", "U2", 2.0, "Y");
+        let _ = crate::mr_delete_edge("U1", "U2", "X");
+
+        //  We should still have "Y" edge.
+        let res = crate::mr_edgelist("").unwrap();
+
+        let n = res.map(|x| {
+            assert_eq!(x.0, "U1");
+            assert_eq!(x.1, "U2");
+            assert_eq!(x.2, 2.0);
+        }).count();
+
+        assert_eq!(n, 1);
+
+        let _ = crate::mr_delete_edge("U1", "U2", "Y");
+    }
+
+    #[pg_test]
+    fn test_null_context_invariant() {
+        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X");
+        let _ = crate::mr_put_edge("U1", "U2", 2.0, "Y");
+
+        //  Delete and put back again.
+        let _ = crate::mr_delete_edge("U1", "U2", "X");
+        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X");
+
+        let res = crate::mr_edgelist("").unwrap();
+
+        let n = res.map(|x| {
+            assert_eq!(x.0, "U1");
+            assert_eq!(x.1, "U2");
+            assert_eq!(x.2, 3.0);
+        }).count();
+
+        assert_eq!(n, 1);
+
+        let _ = crate::mr_delete_edge("U1", "U2", "X");
+        let _ = crate::mr_delete_edge("U1", "U2", "Y");
     }
 }
 
