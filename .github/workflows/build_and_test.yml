@@ -30,9 +30,10 @@ jobs:
       run: |
         git clone --branch dev --depth 1 https://github.com/Intersubjective/meritrank-service-rust.git
         cd meritrank-service-rust
-        cargo build
+        cargo build --release
         export RUST_SERVICE_URL=tcp://127.0.0.1:10444
-        cargo run >/dev/null 2>&1 &
+        export NUM_WALK=50
+        cargo run --release >/dev/null 2>&1 &
     - name: Do the tests
       run: |
         export RUST_TEST_THREADS=1

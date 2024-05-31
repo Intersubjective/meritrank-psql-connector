@@ -29,37 +29,37 @@ const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 const RECV_TIMEOUT_MSEC : u64 = 10000;
 
-fn request<T: for<'a> Deserialize<'a>>(
-    q: Vec<u8>,
-) -> Result<Vec<T>, Box<dyn Error + 'static>> {
+fn request_raw(payload : Vec<u8>, timeout_msec : Option<u64>) -> Result<Message, Box<dyn Error + 'static>> {
     let client = Socket::new(Protocol::Req0)?;
-    client.set_opt::<RecvTimeout>(Some(Duration::from_millis(RECV_TIMEOUT_MSEC)))?;
+    match timeout_msec {
+        Some(t) => client.set_opt::<RecvTimeout>(Some(Duration::from_millis(t)))?,
+        _       => {}
+    }
     client.dial(&SERVICE_URL)?;
     client
-        .send(Message::from(q.as_slice()))
+        .send(Message::from(payload.as_slice()))
         .map_err(|(_, err)| err)?;
-    let msg: Message = client.recv()?;
-    let slice: &[u8] = msg.as_slice();
+    return Ok(client.recv()?);
+}
+
+fn request<T: for<'a> Deserialize<'a>>(
+    payload      : Vec<u8>,
+    timeout_msec : Option<u64>,
+) -> Result<Vec<T>, Box<dyn Error + 'static>> {
+    let msg           = request_raw(payload, timeout_msec)?;
+    let slice : &[u8] = msg.as_slice();
     rmp_serde::from_slice(slice).or_else(|_| {
         let err: String = rmp_serde::from_slice(slice)?;
         Err(Box::from(format!("Server error: {}", err)))
     })
 }
 
-fn contexted_request(
-    context: &str
-) -> impl Fn(Vec<u8>) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> + '_ {
-    move |payload: Vec<u8>| {
-        //let q: (&str, &str, &[u8]) = ("context", context, payload.as_slice()); // why not working?
-        let q: (&str, &str, Vec<u8>) = ("context", context, payload);
-        match rmp_serde::to_vec(&q) {
-            Ok(x)  => Ok(x),
-            Err(x) => Err(x.into())
-        }
-    }
+fn contexted_payload(
+    context : &str,
+    payload : Vec<u8>
+) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let q : (&str, &str, Vec<u8>) = ("context", context, payload);
+    Ok(rmp_serde::to_vec(&q)?)
 }
 
 ///  Information functions
@@ -71,42 +71,22 @@ fn mr_service_url() -> &'static str {
 #[pg_extern]
 fn mr_connector() ->  &'static str { &VERSION.unwrap_or("unknown") }
 
-fn mr_service0() -> Result<String, Box<dyn Error + 'static>> {
-    //  FIXME
-    //  Code duplication with `fn request()`
-    let q = "ver";
-    let client = Socket::new(Protocol::Req0)?;
-    client.set_opt::<RecvTimeout>(Some(Duration::from_millis(RECV_TIMEOUT_MSEC)))?;
-    client.dial(&SERVICE_URL)?;
-    client.send(Message::from(rmp_serde::to_vec(&q)?.as_slice()))
-        .map_err(|(_, err)| err)?;
-    let msg: Message = client.recv()?;
-    let slice: &[u8] = msg.as_slice();
-
-    let s: String = rmp_serde::from_slice(slice)?;
-    Ok( s )
+fn mr_service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
+    let payload  = rmp_serde::to_vec(&"ver")?;
+    let response = request_raw(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let s        = rmp_serde::from_slice(response.as_slice())?;
+    return Ok(s);
 }
+
 #[pg_extern]
 fn mr_service() -> String {
-    match mr_service0() {
+    match mr_service_wrapped() {
         Err(e) => format!("{}", e),
-        Ok(s) => s
+        Ok(s)  => s
     }
 }
 
 /// Basic functions
-
-fn mr_node_score0(
-    ego: &str,
-    target: &str,
-) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = ((("src", "=", ego), ("dest", "=", target)), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
 
 #[pg_extern]
 fn mr_node_score_superposition(
@@ -116,9 +96,9 @@ fn mr_node_score_superposition(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_node_score0(ego, target)
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -130,11 +110,10 @@ fn mr_node_score(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let payload = mr_node_score0(ego, target);
-    let payload = if context.is_empty() { payload } else { payload.map(contexted_request(context)).unwrap() };
-    payload
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -145,10 +124,9 @@ fn mr_node_score_linear_sum(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let q = ((("src", "=", ego), ("dest", "=", target)), (), "null");
-    rmp_serde::to_vec(&q)
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), (), "null"))?;
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 
@@ -204,15 +182,16 @@ fn mr_scores_superposition(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    mr_scores0(ego,
-               false,
-               start_with,
-               score_lt, score_lte,
-               score_gt, score_gte,
-               limit
-    )
-        .map(request)?
-        .map(TableIterator::new)
+    let payload = mr_scores0(
+        ego,
+        false,
+        start_with,
+        score_lt, score_lte,
+        score_gt, score_gte,
+        limit
+    )?;
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -237,11 +216,10 @@ fn mr_scores(
         score_lt, score_lte,
         score_gt, score_gte,
         limit
-    );
-    let payload = if context.is_empty() { payload } else { payload.map(contexted_request(context)).unwrap() };
-    payload
-        .map(request)?
-        .map(TableIterator::new)
+    )?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -251,10 +229,9 @@ fn mr_scores_linear_sum(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let q = ((("src", "=", src), ), (), "null");
-    rmp_serde::to_vec(&q)
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&((("src", "=", src), ), (), "null"))?;
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -265,25 +242,12 @@ fn mr_score_linear_sum(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let q = ((("src", "=", src), ("dest", "=", dest)), (), "null");
-    rmp_serde::to_vec(&q)
-        .map(request)?
-        .map(TableIterator::new)
+    let payload = rmp_serde::to_vec(&((("src", "=", src), ("dest", "=", dest)), (), "null"))?;
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 /// Modify functions
-fn mr_put_edge0(
-    src: &str,
-    dest: &str,
-    weight: f64,
-) -> Result<
-    Vec<u8>,
-    Box<dyn Error>,
-> {
-    let q = (((src, dest, weight), ), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
 
 #[pg_extern]
 fn mr_put_edge(
@@ -295,20 +259,10 @@ fn mr_put_edge(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error>,
 > {
-    let ctx = mr_put_edge0(src, dest, weight);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(TableIterator::new)
-}
-
-fn mr_delete_edge0(
-    ego: &str,
-    target: &str,
-) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
-    let q = ((("src", "delete", ego), ("dest", "delete", target)), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
+    let payload  = rmp_serde::to_vec(&(((src, dest, weight), ), ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -317,20 +271,10 @@ fn mr_delete_edge(
     target: &str,
     context: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-    let ctx = mr_delete_edge0(ego, target);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(|_: Vec<()>| "Ok")
-        .map_err(|e| e.into())
-}
-
-fn mr_delete_node0(
-    ego: &str,
-) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
-    let q = ((("src", "delete", ego), ), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
+    let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ("dest", "delete", target)), ()))?;
+    let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let _ : Vec<()> = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok("Ok");
 }
 
 #[pg_extern]
@@ -338,28 +282,13 @@ fn mr_delete_node(
     ego: &str,
     context: &str,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-    let ctx = mr_delete_node0(ego);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(|_: Vec<()>| "Ok")
-        .map_err(|e| e.into())
+    let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ), ()))?;
+    let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let _ : Vec<()> = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok("Ok");
 }
 
 /// Gravity functions
-fn mr_graph0(
-    ego: &str,
-    focus: &str,
-    positive_only: bool,
-    limit: Option<i32>
-) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = (((ego, "gravity", focus), positive_only, limit), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
 
 #[pg_extern]
 fn mr_graph(
@@ -372,25 +301,10 @@ fn mr_graph(
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_graph0(ego, focus, positive_only, limit);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(TableIterator::new)
-}
-
-fn mr_nodes0(
-    ego: &str,
-    focus: &str,
-    positive_only: bool,
-    limit: Option<i32>
-) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = (((ego, "gravity_nodes", focus), positive_only, limit), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
+    let payload  = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, limit), ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -404,11 +318,10 @@ fn mr_nodes(
     TableIterator<'static, (name!(node, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_nodes0(ego, focus, positive_only, limit);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, limit), ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -416,43 +329,24 @@ fn mr_for_beacons_global() -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let q = ("for_beacons_global", ());
-    rmp_serde::to_vec(&q)
-        .map(request)?
-        .map(TableIterator::new)
+    //    NOTE
+    //    Slow function, no timeout.
+    let payload  = rmp_serde::to_vec(&("for_beacons_global", ()))?;
+    let response = request(payload, None)?;
+    return Ok(TableIterator::new(response));
 }
 
 /// list functions
-
-fn mr_nodelist0() -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = ("nodes", ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
 
 #[pg_extern]
 fn mr_nodelist(context: &str) -> Result<
     TableIterator<'static, (name!(id, String), )>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_nodelist0();
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context)).unwrap() };
-    ctx
-        .map(request::<String>)?
-        .map(|v| v.into_iter().map(|s| (s,))) // wrap to single-element tuple
-        .map(TableIterator::new)
-}
-
-fn mr_edgelist0() -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = ("edges", ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
+    let payload  = rmp_serde::to_vec(&("nodes", ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
@@ -462,24 +356,13 @@ fn mr_edgelist(
     TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_edgelist0();
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&("edges", ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
 }
 
 // connected nodes
-fn mr_connected0(
-    ego: &str
-) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
-> {
-    let q = (((ego, "connected"), ), ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
-}
 
 #[pg_extern]
 fn mr_connected(
@@ -489,11 +372,21 @@ fn mr_connected(
     TableIterator<'static, (name!(source, String), name!(target, String))>,
     Box<dyn Error + 'static>,
 > {
-    let ctx = mr_connected0(ego);
-    let ctx = if context.is_empty() { ctx } else { ctx.map(contexted_request(context))? };
-    ctx
-        .map(request)?
-        .map(TableIterator::new)
+    let payload  = rmp_serde::to_vec(&(((ego, "connected"), ), ()))?;
+    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    return Ok(TableIterator::new(response));
+}
+
+#[pg_extern]
+fn mr_zerorec() -> Result<
+    String,
+    Box<dyn Error + 'static>,
+> {
+    let payload  = rmp_serde::to_vec(&(("zerorec"), ()))?;
+    let response = request_raw(payload, None)?;
+    let s        = rmp_serde::from_slice(response.as_slice())?;
+    return Ok(s);
 }
 
 //
@@ -2892,8 +2785,11 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_dataset() {
+    fn test_zerorec() {
         put_testing_edges();
+
+        let _ = crate::mr_zerorec().unwrap();
+
         delete_testing_edges();
     }
 
