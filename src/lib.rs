@@ -2790,7 +2790,15 @@ mod tests {
 
         let _ = crate::mr_zerorec().unwrap();
 
+        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", false, Some(10000)).unwrap();
+
+        let n = res.count();
+
+        assert!(n > 44 && n < 50);
+
         delete_testing_edges();
+
+        let _ = crate::mr_delete_node("U000000000000", "");
     }
 
     #[pg_test]
