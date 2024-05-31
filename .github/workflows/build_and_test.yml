@@ -32,7 +32,7 @@ jobs:
         cd meritrank-service-rust
         cargo build --release
         export RUST_SERVICE_URL=tcp://127.0.0.1:10444
-        export NUM_WALK=50
+        export NUM_WALK=500
         cargo run --release >/dev/null 2>&1 &
     - name: Do the tests
       run: |
