@@ -429,7 +429,7 @@ mod tests {
 
         let n = res.count();
 
-        assert!(n > 23 && n < 37);
+        assert!(n > 42 && n < 52);
 
         delete_testing_edges();
 
