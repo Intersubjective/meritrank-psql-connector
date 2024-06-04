@@ -40,13 +40,15 @@ jobs:
         export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
   docker_build:
+    needs: [ build_and_test ]
+    if: success()
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Build postgres docker image
       run: |
-        docker build -t tentura_postgres:dev .
-        docker image save tentura_postgres:dev -o tentura_postgres_dev.tar
+        docker build -t postgres-tentura:dev .
+        docker image save postgres-tentura:dev -o tentura_postgres_dev.tar
     - name: Upload postgres docker image
       uses: actions/upload-artifact@v4
       with:

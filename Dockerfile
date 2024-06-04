@@ -8,10 +8,10 @@ RUN cargo pgrx init --pg16 pg_config
 RUN cargo pgrx package
 RUN ls -la target/release/pgmer2-pg16/usr/share/postgresql16/extension
 
-FROM postgres:16
+FROM postgres:16-alpine
 COPY --from=compile /usr/project/target/release/pgmer2-pg16/usr/lib/postgresql16/pgmer2.so /usr/local/lib/postgresql/pgmer2.so
 COPY --from=compile /usr/project/target/release/pgmer2-pg16/usr/share/postgresql16/extension /usr/local/share/postgresql/extension
 COPY 20_pgmer2.sh /docker-entrypoint-initdb.d/20_pgmer2.sh
-# ENV POSTGRES_PASSWORD=1
+
+# FIXME
 ENV POSTGRES_HOST_AUTH_METHOD=trust
-# ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "postgres"]
