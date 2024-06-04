@@ -39,3 +39,17 @@ jobs:
       run: |
         export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
+  docker_build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build postgres docker image
+      run: |
+        docker build -t tentura_postgres:latest .
+        docker image save tentura_postgres:latest -o tentura_postgres_latest.tar
+    - name: Upload postgres docker image
+      uses: actions/upload-artifact@v4
+      with:
+        name: tentura_postgres_latest.tar
+        path: tentura_postgres_latest.tar
+        retention-days: 2
