@@ -1,9 +1,9 @@
-FROM rust:latest as compile
+FROM rust:1.75.0-alpine as compile
 WORKDIR /usr/project
 COPY . .
 RUN apk add cmake make gcc clang15 musl-dev postgresql16 postgresql16-dev openssl-dev
 ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
-RUN cargo install --locked cargo-pgrx
+RUN cargo install --locked --version 0.11.4 cargo-pgrx
 RUN cargo pgrx init --pg16 pg_config
 RUN cargo pgrx package
 RUN ls -la target/release/pgmer2-pg16/usr/share/postgresql16/extension
