@@ -1,19 +1,21 @@
 # meritrank-psql-connector (pgmer2)
-
 MeritRank pgrx NNG connector.
 
 The extention module is still calling **pgmer2**!
 
 See also:
-1. Server sample: https://github.com/shestero/pgmer2serv .
-2. HTTP API analogue: https://github.com/shestero/pgmer1 .
+1. Server sample: https://github.com/shestero/pgmer2serv
+2. HTTP API analogue: https://github.com/shestero/pgmer1
+
+## Env variables
+- `MERITRANK_SERVICE_URL` - default `tcp://127.0.0.1:10234`
+- `MERITRANK_RECV_TIMEOUT_MSEC` - default `10000` (10 seconds)
 
 ## Dev setup for manual testing
-
 - Set RUST_SERVICE_URL value
 
 ```sh
-export RUST_SERVICE_URL=tcp://127.0.0.1:10444
+export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
 ```
 
 - Checkout and run `meritrank-service-rust`

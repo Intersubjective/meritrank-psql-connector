@@ -24,13 +24,14 @@ pub mod testing;
 pg_module_magic!();
 
 lazy_static! {
-    static ref SERVICE_URL: String =
-        var("RUST_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
+    static ref SERVICE_URL : String =
+        var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
+
+    static ref RECV_TIMEOUT_MSEC : u64 =
+        var("MERITRANK_RECV_TIMEOUT_MSEC").unwrap_or(10000);
 }
 
-const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
-
-const RECV_TIMEOUT_MSEC : u64 = 10000;
+const VERSION : Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 fn request_raw(payload : Vec<u8>, timeout_msec : Option<u64>) -> Result<Message, Box<dyn Error + 'static>> {
     let client = Socket::new(Protocol::Req0)?;
@@ -76,7 +77,7 @@ fn mr_connector() ->  &'static str { &VERSION.unwrap_or("unknown") }
 
 fn mr_service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
     let payload  = rmp_serde::to_vec(&"ver")?;
-    let response = request_raw(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request_raw(payload, Some(*RECV_TIMEOUT_MSEC))?;
     let s        = rmp_serde::from_slice(response.as_slice())?;
     return Ok(s);
 }
@@ -100,7 +101,7 @@ fn mr_node_score_superposition(
     Box<dyn Error + 'static>,
 > {
     let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -115,7 +116,7 @@ fn mr_node_score(
 > {
     let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -128,7 +129,7 @@ fn mr_node_score_linear_sum(
     Box<dyn Error + 'static>,
 > {
     let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), (), "null"))?;
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -193,7 +194,7 @@ fn mr_scores_superposition(
         score_gt, score_gte,
         limit
     )?;
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -221,7 +222,7 @@ fn mr_scores(
         limit
     )?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -233,7 +234,7 @@ fn mr_scores_linear_sum(
     Box<dyn Error + 'static>,
 > {
     let payload  = rmp_serde::to_vec(&((("src", "=", src), ), (), "null"))?;
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -246,7 +247,7 @@ fn mr_score_linear_sum(
     Box<dyn Error + 'static>,
 > {
     let payload = rmp_serde::to_vec(&((("src", "=", src), ("dest", "=", dest)), (), "null"))?;
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -264,7 +265,7 @@ fn mr_put_edge(
 > {
     let payload  = rmp_serde::to_vec(&(((src, dest, weight), ), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -276,7 +277,7 @@ fn mr_delete_edge(
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ("dest", "delete", target)), ()))?;
     let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let _ : Vec<()> = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok("Ok");
 }
 
@@ -287,7 +288,7 @@ fn mr_delete_node(
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
     let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ), ()))?;
     let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let _ : Vec<()> = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok("Ok");
 }
 
@@ -306,7 +307,7 @@ fn mr_graph(
 > {
     let payload  = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, limit), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -323,7 +324,7 @@ fn mr_nodes(
 > {
     let payload  = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, limit), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -348,7 +349,7 @@ fn mr_nodelist(context: &str) -> Result<
 > {
     let payload  = rmp_serde::to_vec(&("nodes", ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -361,7 +362,7 @@ fn mr_edgelist(
 > {
     let payload  = rmp_serde::to_vec(&("edges", ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 
@@ -377,7 +378,7 @@ fn mr_connected(
 > {
     let payload  = rmp_serde::to_vec(&(((ego, "connected"), ), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(RECV_TIMEOUT_MSEC))?;
+    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
 }
 

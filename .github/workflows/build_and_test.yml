@@ -20,7 +20,7 @@ jobs:
         sudo apt-get install -y postgresql-16 postgresql-server-dev-16
     - name: Prepare env
       run: |
-        sudo su - root -c "echo \"export RUST_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
+        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
     - name: Build the connector
       run: |
         cargo install --locked cargo-pgrx
@@ -31,9 +31,8 @@ jobs:
         git clone --branch dev --depth 1 https://github.com/Intersubjective/meritrank-service-rust.git
         cd meritrank-service-rust
         cargo build --release
-        export RUST_SERVICE_URL=tcp://127.0.0.1:10444
-        export NUM_WALK=500
-        export GRAVITY_NUM_WALK=500
+        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
+        export MERITRANK_NUM_WALK=500
         cargo run --release >/dev/null 2>&1 &
     - name: Do the tests
       run: |
