@@ -28,7 +28,10 @@ lazy_static! {
         var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
 
     static ref RECV_TIMEOUT_MSEC : u64 =
-        var("MERITRANK_RECV_TIMEOUT_MSEC").unwrap_or(10000);
+        var("MERITRANK_RECV_TIMEOUT_MSEC")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(10000);
 }
 
 const VERSION : Option<&str> = option_env!("CARGO_PKG_VERSION");
