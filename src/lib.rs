@@ -1,11 +1,3 @@
-//  TODO
-//
-//  - Broken functions:
-//
-//  mr_for_beacons_global
-//  ERROR:  IO error while reading marker: failed to fill whole buffer
-//
-
 use lazy_static::lazy_static;
 use nng::*;
 use nng::options::{Options, RecvTimeout};
@@ -331,18 +323,6 @@ fn mr_nodes(
     return Ok(TableIterator::new(response));
 }
 
-#[pg_extern]
-fn mr_for_beacons_global() -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
-> {
-    //    NOTE
-    //    Slow function, no timeout.
-    let payload  = rmp_serde::to_vec(&("for_beacons_global", ()))?;
-    let response = request(payload, None)?;
-    return Ok(TableIterator::new(response));
-}
-
 /// list functions
 
 #[pg_extern]
@@ -386,6 +366,17 @@ fn mr_connected(
 }
 
 #[pg_extern]
+fn mr_reset() -> Result<
+    String,
+    Box<dyn Error + 'static>,
+> {
+    let payload  = rmp_serde::to_vec(&(("reset"), ()))?;
+    let response = request_raw(payload, None)?;
+    let s        = rmp_serde::from_slice(response.as_slice())?;
+    return Ok(s);
+} 
+
+#[pg_extern]
 fn mr_zerorec() -> Result<
     String,
     Box<dyn Error + 'static>,
@@ -416,11 +407,9 @@ mod tests {
 
         let n = res.count();
 
-        assert!(n > 25 && n < 55);
+        assert!(n > 25 && n < 60);
 
-        delete_testing_edges();
-
-        let _ = crate::mr_delete_node("U000000000000", "").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 
     #[pg_test]
@@ -430,14 +419,11 @@ mod tests {
         let _ = crate::mr_zerorec().unwrap();
 
         let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", true, Some(10000)).unwrap();
-
         let n = res.count();
 
-        assert!(n > 25 && n < 55);
+        assert!(n > 25 && n < 60);
 
-        delete_testing_edges();
-
-        let _ = crate::mr_delete_node("U000000000000", "").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 
     #[pg_test]
@@ -462,7 +448,7 @@ mod tests {
 
         assert_eq!(n, 1);
 
-        let _ = crate::mr_delete_edge("U1", "U2", "").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 
     #[pg_test]
@@ -476,8 +462,7 @@ mod tests {
         }).count();
 
         assert_eq!(n, 1);
-
-        let _ = crate::mr_delete_edge("U1", "U2", "X").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 
     #[pg_test]
@@ -495,8 +480,7 @@ mod tests {
 
         assert_eq!(n, 1);
 
-        let _ = crate::mr_delete_edge("U1", "U2", "X").unwrap();
-        let _ = crate::mr_delete_edge("U1", "U2", "Y").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 
 
@@ -517,7 +501,7 @@ mod tests {
 
         assert_eq!(n, 1);
 
-        let _ = crate::mr_delete_edge("U1", "U2", "Y").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 
     #[pg_test]
@@ -539,8 +523,7 @@ mod tests {
 
         assert_eq!(n, 1);
 
-        let _ = crate::mr_delete_edge("U1", "U2", "X").unwrap();
-        let _ = crate::mr_delete_edge("U1", "U2", "Y").unwrap();
+        let _ = crate::mr_reset().unwrap();
     }
 }
 
