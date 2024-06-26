@@ -1,1 +1,2 @@
+DROP FUNCTION IF EXISTS "mr_zerorec";
 CREATE FUNCTION "mr_zerorec"() RETURNS TEXT STRICT LANGUAGE c AS 'MODULE_PATHNAME', 'mr_zerorec_wrapper'; 

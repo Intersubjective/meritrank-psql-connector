@@ -16,383 +16,434 @@ pub mod testing;
 pg_module_magic!();
 
 lazy_static! {
-    static ref SERVICE_URL : String =
-        var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
+  static ref SERVICE_URL : String =
+    var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
 
-    static ref RECV_TIMEOUT_MSEC : u64 =
-        var("MERITRANK_RECV_TIMEOUT_MSEC")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(10000);
+  static ref RECV_TIMEOUT_MSEC : u64 =
+    var("MERITRANK_RECV_TIMEOUT_MSEC")
+      .ok()
+      .and_then(|s| s.parse::<u64>().ok())
+      .unwrap_or(10000);
 }
 
-const VERSION : Option<&str> = option_env!("CARGO_PKG_VERSION");
+const VERSION : &str = match option_env!("CARGO_PKG_VERSION") {
+  Some(x) => x,
+  None    => "dev"
+};
 
 fn request_raw(payload : Vec<u8>, timeout_msec : Option<u64>) -> Result<Message, Box<dyn Error + 'static>> {
-    let client = Socket::new(Protocol::Req0)?;
-    match timeout_msec {
-        Some(t) => client.set_opt::<RecvTimeout>(Some(Duration::from_millis(t)))?,
-        _       => {}
-    }
-    client.dial(&SERVICE_URL)?;
-    client
-        .send(Message::from(payload.as_slice()))
-        .map_err(|(_, err)| err)?;
-    return Ok(client.recv()?);
+  let client = Socket::new(Protocol::Req0)?;
+  match timeout_msec {
+    Some(t) => client.set_opt::<RecvTimeout>(Some(Duration::from_millis(t)))?,
+    _       => {}
+  }
+  client.dial(&SERVICE_URL)?;
+  client
+    .send(Message::from(payload.as_slice()))
+    .map_err(|(_, err)| err)?;
+  return Ok(client.recv()?);
 }
 
 fn request<T: for<'a> Deserialize<'a>>(
-    payload      : Vec<u8>,
-    timeout_msec : Option<u64>,
+  payload    : Vec<u8>,
+  timeout_msec : Option<u64>,
 ) -> Result<Vec<T>, Box<dyn Error + 'static>> {
-    let msg           = request_raw(payload, timeout_msec)?;
-    let slice : &[u8] = msg.as_slice();
-    rmp_serde::from_slice(slice).or_else(|_| {
-        let err: String = rmp_serde::from_slice(slice)?;
-        Err(Box::from(format!("Server error: {}", err)))
-    })
+  let msg       = request_raw(payload, timeout_msec)?;
+  let slice : &[u8] = msg.as_slice();
+  rmp_serde::from_slice(slice).or_else(|_| {
+    let err: String = rmp_serde::from_slice(slice)?;
+    Err(Box::from(format!("Server error: {}", err)))
+  })
 }
 
 fn contexted_payload(
-    context : &str,
-    payload : Vec<u8>
+  context : &str,
+  payload : Vec<u8>
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
-    let q : (&str, &str, Vec<u8>) = ("context", context, payload);
-    Ok(rmp_serde::to_vec(&q)?)
+  let q : (&str, &str, Vec<u8>) = ("context", context, payload);
+  Ok(rmp_serde::to_vec(&q)?)
 }
 
 ///  Information functions
+
 #[pg_extern]
 fn mr_service_url() -> &'static str {
-    &SERVICE_URL
+  &SERVICE_URL
 }
 
 #[pg_extern]
-fn mr_connector() ->  &'static str { &VERSION.unwrap_or("unknown") }
+fn mr_connector() ->  &'static str {
+  VERSION
+}
 
 fn mr_service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
-    let payload  = rmp_serde::to_vec(&"ver")?;
-    let response = request_raw(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    let s        = rmp_serde::from_slice(response.as_slice())?;
-    return Ok(s);
+  let payload  = rmp_serde::to_vec(&"ver")?;
+  let response = request_raw(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  let s        = rmp_serde::from_slice(response.as_slice())?;
+  return Ok(s);
 }
 
 #[pg_extern]
 fn mr_service() -> String {
-    match mr_service_wrapped() {
-        Err(e) => format!("{}", e),
-        Ok(s)  => s
-    }
+  match mr_service_wrapped() {
+    Err(e) => format!("{}", e),
+    Ok(s)  => s
+  }
 }
 
 /// Basic functions
 
 #[pg_extern]
 fn mr_node_score_superposition(
-    ego: &str,
-    target: &str,
+  ego_    : Option<&str>,
+  target_ : Option<&str>,
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let ego      = ego_.expect("ego should not be null");
+  let target   = target_.expect("target should not be null");
+  let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_node_score(
-    ego: &str,
-    target: &str,
-    context: &str,
+  ego_     : Option<&str>,
+  target_  : Option<&str>,
+  context_ : Option<&str>,
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let ego      = ego_.expect("ego should not be null");
+  let target   = target_.expect("target should not be null");
+  let context  = context_.unwrap_or("");
+  let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_node_score_linear_sum(
-    ego: &str,
-    target: &str,
+  ego_    : Option<&str>,
+  target_ : Option<&str>,
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), (), "null"))?;
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let ego      = ego_.expect("ego should not be null");
+  let target   = target_.expect("target should not be null");
+  let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), (), "null"))?;
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
-
-fn mr_scores0(
-    ego           : &str,
-    hide_personal : bool,
-    node_kind     : Option<String>,
-    score_lt      : Option<f64>,
-    score_lte     : Option<f64>,
-    score_gt      : Option<f64>,
-    score_gte     : Option<f64>,
-    index         : Option<i32>,
-    limit         : Option<i32>
+fn scores_payload(
+  ego_           : Option<&str>,
+  hide_personal_ : Option<bool>,
+  node_kind      : Option<String>,
+  score_lt       : Option<f64>,
+  score_lte      : Option<f64>,
+  score_gt       : Option<f64>,
+  score_gte      : Option<f64>,
+  index_         : Option<i32>,
+  count_         : Option<i32>
 ) -> Result<
-    Vec<u8>,
-    Box<dyn Error + 'static>,
+  Vec<u8>,
+  Box<dyn Error + 'static>,
 > {
-    let (lcmp, lt) = match (score_lt, score_lte) {
-        (Some(lt), None) => ("<", lt),
-        (None, Some(lte)) => ("<=", lte),
-        (None, None) => ("<", f64::MIN),
-        _ => return Err(Box::from("either lt or lte allowed!"))
-    };
-    let (gcmp, gt) = match (score_gt, score_gte) {
-        (Some(gt), None) => (">", gt),
-        (None, Some(gte)) => (">=", gte),
-        (None, None) => (">", f64::MAX),
-        _ => return Err(Box::from("either gt or gte allowed!"))
-    };
-    let k = node_kind.unwrap_or("".into());
-    let q = ((
-              ("src", "=", ego),
-              ("node_kind", k.as_str()),
-              ("hide_personal", hide_personal),
-              ("score", gcmp, gt),
-              ("score", lcmp, lt),
-              ("index", index),
-              ("limit", limit)
-             ),
-             ());
-    rmp_serde::to_vec(&q)
-        .map_err(|e| e.into())
+  let ego           = ego_.expect("ego should not be null");
+  let hide_personal = hide_personal_.unwrap_or(false);
+  let index         = index_.unwrap_or(0) as u32;
+  let count         = count_.unwrap_or(i32::MAX) as u32;
+  let (lcmp, lt) = match (score_lt, score_lte) {
+    (Some(lt), None) => ("<", lt),
+    (None, Some(lte)) => ("<=", lte),
+    (None, None) => ("<", f64::MIN),
+    _ => return Err(Box::from("either lt or lte allowed!"))
+  };
+  let (gcmp, gt) = match (score_gt, score_gte) {
+    (Some(gt), None) => (">", gt),
+    (None, Some(gte)) => (">=", gte),
+    (None, None) => (">", f64::MAX),
+    _ => return Err(Box::from("either gt or gte allowed!"))
+  };
+  let k = node_kind.unwrap_or("".into());
+  let q = ((
+        ("src", "=", ego),
+        ("node_kind", k.as_str()),
+        ("hide_personal", hide_personal),
+        ("score", gcmp, gt),
+        ("score", lcmp, lt),
+        ("index", index),
+        ("count", count)
+       ),
+       ());
+  rmp_serde::to_vec(&q)
+    .map_err(|e| e.into())
 }
 
 #[pg_extern]
 fn mr_scores_superposition(
-    ego        : &str,
-    start_with : Option<String>,
-    score_lt   : Option<f64>,
-    score_lte  : Option<f64>,
-    score_gt   : Option<f64>,
-    score_gte  : Option<f64>,
-    index      : Option<i32>,
-    limit      : Option<i32>
+  ego        : Option<&str>,
+  start_with : Option<String>,
+  score_lt   : Option<f64>,
+  score_lte  : Option<f64>,
+  score_gt   : Option<f64>,
+  score_gte  : Option<f64>,
+  index      : Option<i32>,
+  count      : Option<i32>
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload = mr_scores0(
-        ego,
-        false,
-        start_with,
-        score_lt, score_lte,
-        score_gt, score_gte,
-        index,
-        limit
-    )?;
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let payload = scores_payload(
+    ego,
+    Some(false),
+    start_with,
+    score_lt, score_lte,
+    score_gt, score_gte,
+    index,
+    count
+  )?;
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_scores(
-    ego           : &str,
-    hide_personal : bool,
-    context       : &str,
-    start_with    : Option<String>,
-    score_lt      : Option<f64>,
-    score_lte     : Option<f64>,
-    score_gt      : Option<f64>,
-    score_gte     : Option<f64>,
-    index         : Option<i32>,
-    limit         : Option<i32>
+  ego           : Option<&str>,
+  hide_personal : Option<bool>,
+  context_      : Option<&str>,
+  start_with    : Option<String>,
+  score_lt      : Option<f64>,
+  score_lte     : Option<f64>,
+  score_gt      : Option<f64>,
+  score_gte     : Option<f64>,
+  index         : Option<i32>,
+  count         : Option<i32>
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload = mr_scores0(
-        ego,
-        hide_personal,
-        start_with,
-        score_lt, score_lte,
-        score_gt, score_gte,
-        index,
-        limit
-    )?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let context = context_.unwrap_or("");
+  let payload = scores_payload(
+    ego,
+    hide_personal,
+    start_with,
+    score_lt, score_lte,
+    score_gt, score_gte,
+    index,
+    count
+  )?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_scores_linear_sum(
-    src: &str,
+  src_ : Option<&str>
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&((("src", "=", src), ), (), "null"))?;
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let src      = src_.expect("src should not be null");
+  let payload  = rmp_serde::to_vec(&((("src", "=", src), ), (), "null"))?;
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_score_linear_sum(
-    src: &str,
-    dest: &str
+  src_  : Option<&str>,
+  dest_ : Option<&str>
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload = rmp_serde::to_vec(&((("src", "=", src), ("dest", "=", dest)), (), "null"))?;
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let src      = src_.expect("src should not be null");
+  let dest     = dest_.expect("dest should not be null");
+  let payload  = rmp_serde::to_vec(&((("src", "=", src), ("dest", "=", dest)), (), "null"))?;
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 /// Modify functions
 
 #[pg_extern]
 fn mr_put_edge(
-    src: &str,
-    dest: &str,
-    weight: f64,
-    context: &str,
+  src_     : Option<&str>,
+  dest_    : Option<&str>,
+  weight_  : Option<f64>,
+  context_ : Option<&str>
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error>,
 > {
-    let payload  = rmp_serde::to_vec(&(((src, dest, weight), ), ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let src      = src_.expect("src should not be null");
+  let dest     = dest_.expect("dest should not be null");
+  let weight   = weight_.expect("weight should not be null");
+  let context  = context_.unwrap_or("");
+  let payload  = rmp_serde::to_vec(&(((src, dest, weight), ), ()))?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_delete_edge(
-    ego: &str,
-    target: &str,
-    context: &str,
+  ego_     : Option<&str>,
+  target_  : Option<&str>,
+  context_ : Option<&str>
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-    let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ("dest", "delete", target)), ()))?;
-    let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok("Ok");
+  let ego         = ego_.expect("ego should not be null");
+  let target      = target_.expect("target should not be null");
+  let context     = context_.unwrap_or("");
+  let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ("dest", "delete", target)), ()))?;
+  let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok("Ok");
 }
 
 #[pg_extern]
 fn mr_delete_node(
-    ego: &str,
-    context: &str,
+  ego_     : Option<&str>,
+  context_ : Option<&str>
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-    let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ), ()))?;
-    let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok("Ok");
+  let ego         = ego_.expect("ego should not be null");
+  let context     = context_.unwrap_or("");
+  let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ), ()))?;
+  let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok("Ok");
 }
 
 /// Gravity functions
 
 #[pg_extern]
 fn mr_graph(
-    ego           : &str,
-    focus         : &str,
-    context       : &str,
-    positive_only : bool,
-    index         : Option<i32>,
-    limit         : Option<i32>
+  ego_           : Option<&str>,
+  focus_         : Option<&str>,
+  context_       : Option<&str>,
+  positive_only_ : Option<bool>,
+  limit_         : Option<i32>,
+  index_         : Option<i32>,
+  count_         : Option<i32>
 ) -> Result<
-    TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, index, limit), ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let ego           = ego_.expect("ego should not be null");
+  let focus         = focus_.expect("focus should not be null");
+  let context       = context_.unwrap_or("");
+  let positive_only = positive_only_.unwrap_or(false);
+  let limit         = limit_.unwrap_or(i32::MAX) as u32;
+  let index         = index_.unwrap_or(0) as u32;
+  let count         = count_.unwrap_or(i32::MAX) as u32;
+  let payload       = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, limit, index, count), ()))?;
+  let payload       = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response      = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_nodes(
-    ego           : &str,
-    focus         : &str,
-    context       : &str,
-    positive_only : bool,
-    index         : Option<i32>,
-    limit         : Option<i32>
+  ego_           : Option<&str>,
+  focus_         : Option<&str>,
+  context_       : Option<&str>,
+  positive_only_ : Option<bool>,
+  limit_         : Option<i32>,
+  index_         : Option<i32>,
+  count_         : Option<i32>
 ) -> Result<
-    TableIterator<'static, (name!(node, String), name!(weight, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(node, String), name!(weight, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, index, limit), ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let ego           = ego_.expect("ego should not be null");
+  let focus         = focus_.expect("focus should not be null");
+  let context       = context_.unwrap_or("");
+  let positive_only = positive_only_.unwrap_or(false);
+  let limit         = limit_.unwrap_or(i32::MAX) as u32;
+  let index         = index_.unwrap_or(0) as u32;
+  let count         = count_.unwrap_or(i32::MAX) as u32;
+  let payload       = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, limit, index, count), ()))?;
+  let payload       = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response      = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 /// list functions
 
 #[pg_extern]
-fn mr_nodelist(context: &str) -> Result<
-    TableIterator<'static, (name!(id, String), )>,
-    Box<dyn Error + 'static>,
+fn mr_nodelist(
+  context_ : Option<&str>
+) -> Result<
+  TableIterator<'static, (name!(id, String), )>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&("nodes", ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let context  = context_.unwrap_or("");
+  let payload  = rmp_serde::to_vec(&("nodes", ()))?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_edgelist(
-    context: &str
+  context_ : Option<&str>
 ) -> Result<
-    TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(source, String), name!(target, String), name!(weight, f64))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&("edges", ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let context  = context_.unwrap_or("");
+  let payload  = rmp_serde::to_vec(&("edges", ()))?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 // connected nodes
 
 #[pg_extern]
 fn mr_connected(
-    ego: &str,
-    context: &str,
+  ego_     : Option<&str>,
+  context_ : Option<&str>
 ) -> Result<
-    TableIterator<'static, (name!(source, String), name!(target, String))>,
-    Box<dyn Error + 'static>,
+  TableIterator<'static, (name!(source, String), name!(target, String))>,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(((ego, "connected"), ), ()))?;
-    let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-    let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-    return Ok(TableIterator::new(response));
+  let ego      = ego_.expect("ego should not be null");
+  let context  = context_.unwrap_or("");
+  let payload  = rmp_serde::to_vec(&(((ego, "connected"), ), ()))?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok(TableIterator::new(response));
 }
 
 #[pg_extern]
 fn mr_reset() -> Result<
-    String,
-    Box<dyn Error + 'static>,
+  String,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(("reset"), ()))?;
-    let response = request_raw(payload, None)?;
-    let s        = rmp_serde::from_slice(response.as_slice())?;
-    return Ok(s);
+  let payload  = rmp_serde::to_vec(&(("reset"), ()))?;
+  let response = request_raw(payload, None)?;
+  let s    = rmp_serde::from_slice(response.as_slice())?;
+  return Ok(s);
 } 
 
 #[pg_extern]
 fn mr_zerorec() -> Result<
-    String,
-    Box<dyn Error + 'static>,
+  String,
+  Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(("zerorec"), ()))?;
-    let response = request_raw(payload, None)?;
-    let s        = rmp_serde::from_slice(response.as_slice())?;
-    return Ok(s);
+  let payload  = rmp_serde::to_vec(&(("zerorec"), ()))?;
+  let response = request_raw(payload, None)?;
+  let s    = rmp_serde::from_slice(response.as_slice())?;
+  return Ok(s);
 }
 
 //
@@ -402,144 +453,161 @@ fn mr_zerorec() -> Result<
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
 mod tests {
-    use pgrx::prelude::*;
-    use super::testing::*;
+  use pgrx::prelude::*;
+  use super::testing::*;
 
-    #[pg_test]
-    fn zerorec_graph() {
-        put_testing_edges();
+  #[pg_test]
+  fn zerorec_graph() {
+    put_testing_edges();
 
-        let _ = crate::mr_zerorec().unwrap();
+    let _ = crate::mr_zerorec().unwrap();
 
-        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", false, Some(0), Some(10000)).unwrap();
+    let res = crate::mr_graph(
+      Some("Uadeb43da4abb"),
+      Some("U000000000000"),
+      None,
+      Some(false),
+      None,
+      None,
+      None
+    ).unwrap();
 
-        let n = res.count();
+    let n = res.count();
 
-        assert!(n > 25 && n < 60);
+    assert!(n > 25 && n < 60);
 
-        let _ = crate::mr_reset().unwrap();
-    }
+    let _ = crate::mr_reset().unwrap();
+  }
 
-    #[pg_test]
-    fn zerorec_graph_positive_only() {
-        put_testing_edges();
+  #[pg_test]
+  fn zerorec_graph_positive_only() {
+    put_testing_edges();
 
-        let _ = crate::mr_zerorec().unwrap();
+    let _ = crate::mr_zerorec().unwrap();
 
-        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", true, Some(0), Some(10000)).unwrap();
-        let n = res.count();
+    let res = crate::mr_graph(
+      Some("Uadeb43da4abb"),
+      Some("U000000000000"),
+      None,
+      Some(true),
+      None,
+      None,
+      None
+    ).unwrap();
 
-        assert!(n > 25 && n < 60);
+    let n = res.count();
 
-        let _ = crate::mr_reset().unwrap();
-    }
+    assert!(n > 25 && n < 60);
 
-    #[pg_test]
-    fn service() {
-        let ver = crate::mr_service();
+    let _ = crate::mr_reset().unwrap();
+  }
 
-        //  check if ver is in form "X.Y.Z"
-        assert_eq!(ver.split(".").map(|x|
-            x.parse::<u32>().unwrap()
-        ).count(), 3);
-    }
+  #[pg_test]
+  fn service() {
+    let ver = crate::mr_service();
 
-    #[pg_test]
-    fn edge_uncontexted() {
-        let res = crate::mr_put_edge("U1", "U2", 1.0, "").unwrap();
+    //  check if ver is in form "X.Y.Z"
+    assert_eq!(ver.split(".").map(|x|
+      x.parse::<i32>().unwrap()
+    ).count(), 3);
+  }
 
-        let n = res.map(|x| {
-            assert_eq!(x.0, "U1");
-            assert_eq!(x.1, "U2");
-            assert_eq!(x.2, 1.0);
-        }).count();
+  #[pg_test]
+  fn edge_uncontexted() {
+    let res = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
 
-        assert_eq!(n, 1);
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert_eq!(x.2, 1.0);
+    }).count();
 
-        let _ = crate::mr_reset().unwrap();
-    }
+    assert_eq!(n, 1);
 
-    #[pg_test]
-    fn edge_contexted() {
-        let res = crate::mr_put_edge("U1", "U2", 1.0, "X").unwrap();
-        
-        let n = res.map(|x| {
-            assert_eq!(x.0, "U1");
-            assert_eq!(x.1, "U2");
-            assert_eq!(x.2, 1.0);
-        }).count();
+    let _ = crate::mr_reset().unwrap();
+  }
 
-        assert_eq!(n, 1);
-        let _ = crate::mr_reset().unwrap();
-    }
+  #[pg_test]
+  fn edge_contexted() {
+    let res = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
+    
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert_eq!(x.2, 1.0);
+    }).count();
 
-    #[pg_test]
-    fn null_context_is_sum() {
-        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X").unwrap();
-        let _ = crate::mr_put_edge("U1", "U2", 2.0, "Y").unwrap();
+    assert_eq!(n, 1);
+    let _ = crate::mr_reset().unwrap();
+  }
 
-        let res = crate::mr_edgelist("").unwrap();
+  #[pg_test]
+  fn null_context_is_sum() {
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
 
-        let n = res.map(|x| {
-            assert_eq!(x.0, "U1");
-            assert_eq!(x.1, "U2");
-            assert_eq!(x.2, 3.0);
-        }).count();
+    let res = crate::mr_edgelist(None).unwrap();
 
-        assert_eq!(n, 1);
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert_eq!(x.2, 3.0);
+    }).count();
 
-        let _ = crate::mr_reset().unwrap();
-    }
+    assert_eq!(n, 1);
 
-    #[pg_test]
-    fn delete_contexted_edge() {
-        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X").unwrap();
-        let _ = crate::mr_put_edge("U1", "U2", 2.0, "Y").unwrap();
-        let _ = crate::mr_delete_edge("U1", "U2", "X").unwrap();
+    let _ = crate::mr_reset().unwrap();
+  }
 
-        //  We should still have "Y" edge.
-        let res = crate::mr_edgelist("").unwrap();
+  #[pg_test]
+  fn delete_contexted_edge() {
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
+    let _ = crate::mr_delete_edge(Some("U1"), Some("U2"), Some("X")).unwrap();
 
-        let n = res.map(|x| {
-            assert_eq!(x.0, "U1");
-            assert_eq!(x.1, "U2");
-            assert_eq!(x.2, 2.0);
-        }).count();
+    //  We should still have "Y" edge.
+    let res = crate::mr_edgelist(None).unwrap();
 
-        assert_eq!(n, 1);
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert_eq!(x.2, 2.0);
+    }).count();
 
-        let _ = crate::mr_reset().unwrap();
-    }
+    assert_eq!(n, 1);
 
-    #[pg_test]
-    fn null_context_invariant() {
-        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X").unwrap();
-        let _ = crate::mr_put_edge("U1", "U2", 2.0, "Y").unwrap();
+    let _ = crate::mr_reset().unwrap();
+  }
 
-        //  Delete and put back again.
-        let _ = crate::mr_delete_edge("U1", "U2", "X");
-        let _ = crate::mr_put_edge("U1", "U2", 1.0, "X");
+  #[pg_test]
+  fn null_context_invariant() {
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
 
-        let res = crate::mr_edgelist("").unwrap();
+    //  Delete and put back again.
+    let _ = crate::mr_delete_edge(Some("U1"), Some("U2"), Some("X"));
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X"));
 
-        let n = res.map(|x| {
-            assert_eq!(x.0, "U1");
-            assert_eq!(x.1, "U2");
-            assert_eq!(x.2, 3.0);
-        }).count();
+    let res = crate::mr_edgelist(None).unwrap();
 
-        assert_eq!(n, 1);
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert_eq!(x.2, 3.0);
+    }).count();
 
-        let _ = crate::mr_reset().unwrap();
-    }
+    assert_eq!(n, 1);
+
+    let _ = crate::mr_reset().unwrap();
+  }
 }
 
 #[cfg(test)]
 pub mod pg_test {
-    pub fn setup(_options: Vec<&str>) {
-    }
+  pub fn setup(_options: Vec<&str>) {
+  }
 
-    pub fn postgresql_conf_options() -> Vec<&'static str> {
-        vec![]
-    }
+  pub fn postgresql_conf_options() -> Vec<&'static str> {
+    vec![]
+  }
 }
