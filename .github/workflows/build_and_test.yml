@@ -44,17 +44,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Build postgres docker image
+    - name: Determine tag
+      shell: bash
       run: |
-        docker build -t vbulavintsev/postgres-tentura:dev .
-        docker image save vbulavintsev/postgres-tentura:dev -o postgres_tentura_dev.tar
+        export VER="dev-$(date +'%Y-%m')"
+        export N=1
+        while [ $(docker manifest inspect vbulavintsev/postgres-tentura:$VER-$N >/dev/null 2>&1; echo $?) -eq 0 ]; do
+          let N++
+        done
+        echo "TAG=$VER-$N" >> $GITHUB_ENV
+    - name: Build docker image
+      run: |
+        docker build -t vbulavintsev/postgres-tentura:$TAG .
     - name: Push docker image to Dockerhub
+      if: ${{ github.ref == 'refs/heads/dev' }}
+      shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
-        docker image push vbulavintsev/postgres-tentura:dev
-    - name: Upload docker image artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: postgres_tentura_dev.tar
-        path: postgres_tentura_dev.tar
-        retention-days: 2
+        docker image push vbulavintsev/postgres-tentura:$TAG
