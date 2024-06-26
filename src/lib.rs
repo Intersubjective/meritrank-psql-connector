@@ -130,14 +130,15 @@ fn mr_node_score_linear_sum(
 
 
 fn mr_scores0(
-    ego: &str,
-    hide_personal: bool,
-    start_with: Option<String>,
-    score_lt: Option<f64>,
-    score_lte: Option<f64>,
-    score_gt: Option<f64>,
-    score_gte: Option<f64>,
-    limit: Option<i32>
+    ego           : &str,
+    hide_personal : bool,
+    node_kind     : Option<String>,
+    score_lt      : Option<f64>,
+    score_lte     : Option<f64>,
+    score_gt      : Option<f64>,
+    score_gte     : Option<f64>,
+    index         : Option<i32>,
+    limit         : Option<i32>
 ) -> Result<
     Vec<u8>,
     Box<dyn Error + 'static>,
@@ -154,13 +155,14 @@ fn mr_scores0(
         (None, None) => (">", f64::MAX),
         _ => return Err(Box::from("either gt or gte allowed!"))
     };
-    let binding = start_with.unwrap_or(String::new());
+    let k = node_kind.unwrap_or("".into());
     let q = ((
               ("src", "=", ego),
-              ("target", "like", binding.as_str()),
+              ("node_kind", k.as_str()),
               ("hide_personal", hide_personal),
               ("score", gcmp, gt),
               ("score", lcmp, lt),
+              ("index", index),
               ("limit", limit)
              ),
              ());
@@ -170,13 +172,14 @@ fn mr_scores0(
 
 #[pg_extern]
 fn mr_scores_superposition(
-    ego: &str,
-    start_with: Option<String>,
-    score_lt: Option<f64>,
-    score_lte: Option<f64>,
-    score_gt: Option<f64>,
-    score_gte: Option<f64>,
-    limit: Option<i32>
+    ego        : &str,
+    start_with : Option<String>,
+    score_lt   : Option<f64>,
+    score_lte  : Option<f64>,
+    score_gt   : Option<f64>,
+    score_gte  : Option<f64>,
+    index      : Option<i32>,
+    limit      : Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -187,6 +190,7 @@ fn mr_scores_superposition(
         start_with,
         score_lt, score_lte,
         score_gt, score_gte,
+        index,
         limit
     )?;
     let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -195,15 +199,16 @@ fn mr_scores_superposition(
 
 #[pg_extern]
 fn mr_scores(
-    ego: &str,
-    hide_personal: bool,
-    context: &str,
-    start_with: Option<String>,
-    score_lt: Option<f64>,
-    score_lte: Option<f64>,
-    score_gt: Option<f64>,
-    score_gte: Option<f64>,
-    limit: Option<i32>
+    ego           : &str,
+    hide_personal : bool,
+    context       : &str,
+    start_with    : Option<String>,
+    score_lt      : Option<f64>,
+    score_lte     : Option<f64>,
+    score_gt      : Option<f64>,
+    score_gte     : Option<f64>,
+    index         : Option<i32>,
+    limit         : Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
@@ -214,6 +219,7 @@ fn mr_scores(
         start_with,
         score_lt, score_lte,
         score_gt, score_gte,
+        index,
         limit
     )?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
@@ -291,16 +297,17 @@ fn mr_delete_node(
 
 #[pg_extern]
 fn mr_graph(
-    ego: &str,
-    focus: &str,
-    context: &str,
-    positive_only: bool,
-    limit: Option<i32>
+    ego           : &str,
+    focus         : &str,
+    context       : &str,
+    positive_only : bool,
+    index         : Option<i32>,
+    limit         : Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(ego, String), name!(target, String), name!(score, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, limit), ()))?;
+    let payload  = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, index, limit), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
     let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
@@ -308,16 +315,17 @@ fn mr_graph(
 
 #[pg_extern]
 fn mr_nodes(
-    ego: &str,
-    focus: &str,
-    context: &str,
-    positive_only: bool,
-    limit: Option<i32>
+    ego           : &str,
+    focus         : &str,
+    context       : &str,
+    positive_only : bool,
+    index         : Option<i32>,
+    limit         : Option<i32>
 ) -> Result<
     TableIterator<'static, (name!(node, String), name!(weight, f64))>,
     Box<dyn Error + 'static>,
 > {
-    let payload  = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, limit), ()))?;
+    let payload  = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, index, limit), ()))?;
     let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
     let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
     return Ok(TableIterator::new(response));
@@ -403,7 +411,7 @@ mod tests {
 
         let _ = crate::mr_zerorec().unwrap();
 
-        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", false, Some(10000)).unwrap();
+        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", false, Some(0), Some(10000)).unwrap();
 
         let n = res.count();
 
@@ -418,7 +426,7 @@ mod tests {
 
         let _ = crate::mr_zerorec().unwrap();
 
-        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", true, Some(10000)).unwrap();
+        let res = crate::mr_graph("Uadeb43da4abb", "U000000000000", "", true, Some(0), Some(10000)).unwrap();
         let n = res.count();
 
         assert!(n > 25 && n < 60);
@@ -482,7 +490,6 @@ mod tests {
 
         let _ = crate::mr_reset().unwrap();
     }
-
 
     #[pg_test]
     fn delete_contexted_edge() {
