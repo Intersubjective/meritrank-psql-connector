@@ -144,7 +144,7 @@ fn mr_node_score_linear_sum(
 fn scores_payload(
   ego_           : Option<&str>,
   hide_personal_ : Option<bool>,
-  node_kind      : Option<String>,
+  node_kind      : Option<&str>,
   score_lt       : Option<f64>,
   score_lte      : Option<f64>,
   score_gt       : Option<f64>,
@@ -174,7 +174,7 @@ fn scores_payload(
   let k = node_kind.unwrap_or("".into());
   let q = ((
         ("src", "=", ego),
-        ("node_kind", k.as_str()),
+        ("node_kind", k),
         ("hide_personal", hide_personal),
         ("score", gcmp, gt),
         ("score", lcmp, lt),
@@ -189,7 +189,7 @@ fn scores_payload(
 #[pg_extern]
 fn mr_scores_superposition(
   ego        : Option<&str>,
-  start_with : Option<String>,
+  start_with : Option<&str>,
   score_lt   : Option<f64>,
   score_lte  : Option<f64>,
   score_gt   : Option<f64>,
@@ -218,7 +218,7 @@ fn mr_scores(
   ego           : Option<&str>,
   hide_personal : Option<bool>,
   context_      : Option<&str>,
-  start_with    : Option<String>,
+  start_with    : Option<&str>,
   score_lt      : Option<f64>,
   score_lte     : Option<f64>,
   score_gt      : Option<f64>,
@@ -330,7 +330,6 @@ fn mr_graph(
   focus_         : Option<&str>,
   context_       : Option<&str>,
   positive_only_ : Option<bool>,
-  limit_         : Option<i32>,
   index_         : Option<i32>,
   count_         : Option<i32>
 ) -> Result<
@@ -341,10 +340,9 @@ fn mr_graph(
   let focus         = focus_.expect("focus should not be null");
   let context       = context_.unwrap_or("");
   let positive_only = positive_only_.unwrap_or(false);
-  let limit         = limit_.unwrap_or(i32::MAX) as u32;
   let index         = index_.unwrap_or(0) as u32;
   let count         = count_.unwrap_or(i32::MAX) as u32;
-  let payload       = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, limit, index, count), ()))?;
+  let payload       = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, index, count), ()))?;
   let payload       = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
   let response      = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok(TableIterator::new(response));
@@ -356,7 +354,6 @@ fn mr_nodes(
   focus_         : Option<&str>,
   context_       : Option<&str>,
   positive_only_ : Option<bool>,
-  limit_         : Option<i32>,
   index_         : Option<i32>,
   count_         : Option<i32>
 ) -> Result<
@@ -367,10 +364,9 @@ fn mr_nodes(
   let focus         = focus_.expect("focus should not be null");
   let context       = context_.unwrap_or("");
   let positive_only = positive_only_.unwrap_or(false);
-  let limit         = limit_.unwrap_or(i32::MAX) as u32;
   let index         = index_.unwrap_or(0) as u32;
   let count         = count_.unwrap_or(i32::MAX) as u32;
-  let payload       = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, limit, index, count), ()))?;
+  let payload       = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, index, count), ()))?;
   let payload       = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
   let response      = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok(TableIterator::new(response));
@@ -458,6 +454,8 @@ mod tests {
 
   #[pg_test]
   fn zerorec_graph() {
+    let _ = crate::mr_reset().unwrap();
+
     put_testing_edges();
 
     let _ = crate::mr_zerorec().unwrap();
@@ -468,19 +466,18 @@ mod tests {
       None,
       Some(false),
       None,
-      None,
       None
     ).unwrap();
 
     let n = res.count();
 
     assert!(n > 25 && n < 60);
-
-    let _ = crate::mr_reset().unwrap();
   }
 
   #[pg_test]
   fn zerorec_graph_positive_only() {
+    let _ = crate::mr_reset().unwrap();
+
     put_testing_edges();
 
     let _ = crate::mr_zerorec().unwrap();
@@ -491,15 +488,12 @@ mod tests {
       None,
       Some(true),
       None,
-      None,
       None
     ).unwrap();
 
     let n = res.count();
 
     assert!(n > 25 && n < 60);
-
-    let _ = crate::mr_reset().unwrap();
   }
 
   #[pg_test]
@@ -514,6 +508,8 @@ mod tests {
 
   #[pg_test]
   fn edge_uncontexted() {
+    let _ = crate::mr_reset().unwrap();
+
     let res = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
 
     let n = res.map(|x| {
@@ -523,12 +519,12 @@ mod tests {
     }).count();
 
     assert_eq!(n, 1);
-
-    let _ = crate::mr_reset().unwrap();
   }
 
   #[pg_test]
   fn edge_contexted() {
+    let _ = crate::mr_reset().unwrap();
+
     let res = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
     
     let n = res.map(|x| {
@@ -538,11 +534,12 @@ mod tests {
     }).count();
 
     assert_eq!(n, 1);
-    let _ = crate::mr_reset().unwrap();
   }
 
   #[pg_test]
   fn null_context_is_sum() {
+    let _ = crate::mr_reset().unwrap();
+
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
 
@@ -555,12 +552,12 @@ mod tests {
     }).count();
 
     assert_eq!(n, 1);
-
-    let _ = crate::mr_reset().unwrap();
   }
 
   #[pg_test]
   fn delete_contexted_edge() {
+    let _ = crate::mr_reset().unwrap();
+
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
     let _ = crate::mr_delete_edge(Some("U1"), Some("U2"), Some("X")).unwrap();
@@ -575,12 +572,12 @@ mod tests {
     }).count();
 
     assert_eq!(n, 1);
-
-    let _ = crate::mr_reset().unwrap();
   }
 
   #[pg_test]
   fn null_context_invariant() {
+    let _ = crate::mr_reset().unwrap();
+
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
 
@@ -597,8 +594,252 @@ mod tests {
     }).count();
 
     assert_eq!(n, 1);
+  }
 
+  #[pg_test]
+  fn node_score_superposition() {
     let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), None).unwrap();
+
+    let res = crate::mr_node_score_superposition(Some("U1"), Some("U2")).unwrap();
+
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert!(x.2 > 0.33 && x.2 < 0.43);
+    }).count();
+
+    assert_eq!(n, 1);
+  }
+
+  #[pg_test]
+  fn node_score() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), Some("X")).unwrap();
+
+    let res = crate::mr_node_score(Some("U1"), Some("U2"), Some("X")).unwrap();
+
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert!(x.2 > 0.33 && x.2 < 0.43);
+    }).count();
+
+    assert_eq!(n, 1);
+  }
+
+  #[pg_test]
+  fn node_score_linear_sum() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), Some("X")).unwrap();
+
+    let res = crate::mr_node_score_linear_sum(Some("U1"), Some("U2")).unwrap();
+
+    let n = res.map(|x| {
+      assert_eq!(x.0, "U1");
+      assert_eq!(x.1, "U2");
+      assert!(x.2 > 0.33 && x.2 < 0.43);
+    }).count();
+
+    assert_eq!(n, 1);
+  }
+
+  #[pg_test]
+  fn scores_superposition() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
+
+    let res_iter = crate::mr_scores_superposition(
+      Some("U1"),
+      Some("U"),
+      Some(10.0), None,
+      Some(0.0), None,
+      None, None
+    ).unwrap();
+
+    let res : Vec<(String, String, f64)> = res_iter.collect();
+
+    assert_eq!(res.len(), 3);
+
+    assert_eq!(res[0].0, "U1");
+    assert_eq!(res[0].1, "U1");
+    assert!(res[0].2 > 0.2);
+    assert!(res[0].2 < 0.5);
+
+    assert_eq!(res[1].0, "U1");
+    assert_eq!(res[1].1, "U3");
+    assert!(res[1].2 > 0.2);
+    assert!(res[1].2 < 0.5);
+
+    assert_eq!(res[2].0, "U1");
+    assert_eq!(res[2].1, "U2");
+    assert!(res[2].2 > 0.1);
+    assert!(res[2].2 < 0.4);
+  }
+
+  #[pg_test]
+  fn scores() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
+
+    let res_iter = crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some("X"),
+      Some("U"),
+      Some(10.0), None,
+      Some(0.0), None,
+      None, None
+    ).unwrap();
+
+    let res : Vec<(String, String, f64)> = res_iter.collect();
+
+    assert_eq!(res.len(), 3);
+
+    assert_eq!(res[0].0, "U1");
+    assert_eq!(res[0].1, "U1");
+    assert!(res[0].2 > 0.2);
+    assert!(res[0].2 < 0.5);
+
+    assert_eq!(res[1].0, "U1");
+    assert_eq!(res[1].1, "U3");
+    assert!(res[1].2 > 0.2);
+    assert!(res[1].2 < 0.5);
+
+    assert_eq!(res[2].0, "U1");
+    assert_eq!(res[2].1, "U2");
+    assert!(res[2].2 > 0.1);
+    assert!(res[2].2 < 0.4);
+  }
+
+  #[pg_test]
+  fn scores_linear_sum() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
+
+    let res_iter = crate::mr_scores_linear_sum(
+      Some("U1"),
+    ).unwrap();
+
+    let res : Vec<(String, String, f64)> = res_iter.collect();
+
+    assert_eq!(res.len(), 3);
+
+    assert_eq!(res[0].0, "U1");
+    assert_eq!(res[0].1, "U1");
+    assert!(res[0].2 > 0.2);
+    assert!(res[0].2 < 0.5);
+
+    assert_eq!(res[1].0, "U1");
+    assert_eq!(res[1].1, "U3");
+    assert!(res[1].2 > 0.2);
+    assert!(res[1].2 < 0.5);
+
+    assert_eq!(res[2].0, "U1");
+    assert_eq!(res[2].1, "U2");
+    assert!(res[2].2 > 0.1);
+    assert!(res[2].2 < 0.4);
+  }
+
+  #[pg_test]
+  fn score_linear_sum() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
+
+    let res_iter = crate::mr_score_linear_sum(
+      Some("U1"),
+      Some("U2")
+    ).unwrap();
+
+    let res : Vec<(String, String, f64)> = res_iter.collect();
+
+    assert_eq!(res.len(), 1);
+
+    assert_eq!(res[0].0, "U1");
+    assert_eq!(res[0].1, "U2");
+    assert!(res[0].2 > 0.1);
+    assert!(res[0].2 < 0.4);
+  }
+
+  #[pg_test]
+  fn nodes() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
+
+    let res_iter = crate::mr_nodes(
+      Some("U1"),
+      Some("U2"),
+      None,
+      Some(false),
+      None, None
+    ).unwrap();
+
+    let res : Vec<(String, f64)> = res_iter.collect();
+
+    assert_eq!(res.len(), 2);
+  }
+
+  #[pg_test]
+  fn nodelist() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
+
+    let res_iter = crate::mr_nodelist(None).unwrap();
+
+    let res : Vec<(String,)> = res_iter.collect();
+
+    assert_eq!(res.len(), 3);
+
+    for x in res {
+      assert!(x.0 == "U1" || x.0 == "U2" || x.0 == "U3");
+    }
+  }
+
+  #[pg_test]
+  fn connected() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
+
+    let res_iter = crate::mr_connected(Some("U1"), None).unwrap();
+
+    let res : Vec<(String, String)> = res_iter.collect();
+
+    assert_eq!(res.len(), 2);
+
+    for x in res {
+      assert!(x.0 == "U1");
+      assert!(x.1 == "U2" || x.1 == "U3");
+    }
   }
 }
 

@@ -57,7 +57,7 @@ jobs:
       run: |
         docker build -t vbulavintsev/postgres-tentura:$TAG .
     - name: Push docker image to Dockerhub
-      if: ${{ github.ref == 'refs/heads/dev' }}
+      if: ${{ github.ref == 'refs/heads/main' }}
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
