@@ -56,13 +56,13 @@ AS 'MODULE_PATHNAME', 'mr_service_wrapper';
 -- pgmer2::mr_scores_superposition
 CREATE  FUNCTION "mr_scores_superposition"(
 	"ego" TEXT, /* core::option::Option<&str> */
-	"start_with" TEXT, /* core::option::Option<&str> */
-	"score_lt" double precision, /* core::option::Option<f64> */
-	"score_lte" double precision, /* core::option::Option<f64> */
-	"score_gt" double precision, /* core::option::Option<f64> */
-	"score_gte" double precision, /* core::option::Option<f64> */
-	"index" INT, /* core::option::Option<i32> */
-	"count" INT /* core::option::Option<i32> */
+	"start_with" TEXT DEFAULT '', /* core::option::Option<&str> */
+	"score_lt" double precision DEFAULT null, /* core::option::Option<f64> */
+	"score_lte" double precision DEFAULT null, /* core::option::Option<f64> */
+	"score_gt" double precision DEFAULT null, /* core::option::Option<f64> */
+	"score_gte" double precision DEFAULT null, /* core::option::Option<f64> */
+	"index" INT DEFAULT null, /* core::option::Option<i32> */
+	"count" INT DEFAULT null /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -81,15 +81,15 @@ AS 'MODULE_PATHNAME', 'mr_scores_linear_sum_wrapper';
 -- pgmer2::mr_scores
 CREATE  FUNCTION "mr_scores"(
 	"ego" TEXT, /* core::option::Option<&str> */
-	"hide_personal" bool, /* core::option::Option<bool> */
-	"context" TEXT, /* core::option::Option<&str> */
-	"start_with" TEXT, /* core::option::Option<&str> */
-	"score_lt" double precision, /* core::option::Option<f64> */
-	"score_lte" double precision, /* core::option::Option<f64> */
-	"score_gt" double precision, /* core::option::Option<f64> */
-	"score_gte" double precision, /* core::option::Option<f64> */
-	"index" INT, /* core::option::Option<i32> */
-	"count" INT /* core::option::Option<i32> */
+	"hide_personal" bool DEFAULT false, /* core::option::Option<bool> */
+	"context" TEXT DEFAULT '', /* core::option::Option<&str> */
+	"start_with" TEXT DEFAULT '', /* core::option::Option<&str> */
+	"score_lt" double precision DEFAULT null, /* core::option::Option<f64> */
+	"score_lte" double precision DEFAULT null, /* core::option::Option<f64> */
+	"score_gt" double precision DEFAULT null, /* core::option::Option<f64> */
+	"score_gte" double precision DEFAULT null, /* core::option::Option<f64> */
+	"index" INT DEFAULT null, /* core::option::Option<i32> */
+	"count" INT DEFAULT null /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -118,7 +118,7 @@ CREATE  FUNCTION "mr_put_edge"(
 	"src" TEXT, /* core::option::Option<&str> */
 	"dest" TEXT, /* core::option::Option<&str> */
 	"weight" double precision, /* core::option::Option<f64> */
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_put_edge_wrapper';
@@ -128,10 +128,10 @@ AS 'MODULE_PATHNAME', 'mr_put_edge_wrapper';
 CREATE  FUNCTION "mr_nodes"(
 	"ego" TEXT, /* core::option::Option<&str> */
 	"focus" TEXT, /* core::option::Option<&str> */
-	"context" TEXT, /* core::option::Option<&str> */
-	"positive_only" bool, /* core::option::Option<bool> */
-	"index" INT, /* core::option::Option<i32> */
-	"count" INT /* core::option::Option<i32> */
+	"context" TEXT DEFAULT '', /* core::option::Option<&str> */
+	"positive_only" bool DEFAULT false, /* core::option::Option<bool> */
+	"index" INT DEFAULT null, /* core::option::Option<i32> */
+	"count" INT DEFAULT null /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_node /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -140,7 +140,7 @@ AS 'MODULE_PATHNAME', 'mr_nodes_wrapper';
 -- src/lib.rs:431
 -- pgmer2::mr_nodelist
 CREATE  FUNCTION "mr_nodelist"(
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS SETOF TEXT /* alloc::string::String */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -171,7 +171,7 @@ AS 'MODULE_PATHNAME', 'mr_node_score_linear_sum_wrapper';
 CREATE  FUNCTION "mr_node_score"(
 	"ego" TEXT, /* core::option::Option<&str> */
 	"target" TEXT, /* core::option::Option<&str> */
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -182,10 +182,10 @@ AS 'MODULE_PATHNAME', 'mr_node_score_wrapper';
 CREATE  FUNCTION "mr_graph"(
 	"ego" TEXT, /* core::option::Option<&str> */
 	"focus" TEXT, /* core::option::Option<&str> */
-	"context" TEXT, /* core::option::Option<&str> */
-	"positive_only" bool, /* core::option::Option<bool> */
-	"index" INT, /* core::option::Option<i32> */
-	"count" INT /* core::option::Option<i32> */
+	"context" TEXT DEFAULT '', /* core::option::Option<&str> */
+	"positive_only" bool DEFAULT false, /* core::option::Option<bool> */
+	"index" INT DEFAULT null, /* core::option::Option<i32> */
+	"count" INT DEFAULT null /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -194,7 +194,7 @@ AS 'MODULE_PATHNAME', 'mr_graph_wrapper';
 -- src/lib.rs:451
 -- pgmer2::mr_edgelist
 CREATE  FUNCTION "mr_edgelist"(
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -204,7 +204,7 @@ AS 'MODULE_PATHNAME', 'mr_edgelist_wrapper';
 -- pgmer2::mr_delete_node
 CREATE  FUNCTION "mr_delete_node"(
 	"ego" TEXT, /* core::option::Option<&str> */
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS TEXT /* core::result::Result<&str, alloc::boxed::Box<dyn core::error::Error>> */
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_delete_node_wrapper';
@@ -214,7 +214,7 @@ AS 'MODULE_PATHNAME', 'mr_delete_node_wrapper';
 CREATE  FUNCTION "mr_delete_edge"(
 	"ego" TEXT, /* core::option::Option<&str> */
 	"target" TEXT, /* core::option::Option<&str> */
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS TEXT /* core::result::Result<&str, alloc::boxed::Box<dyn core::error::Error>> */
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_delete_edge_wrapper';
@@ -230,7 +230,7 @@ AS 'MODULE_PATHNAME', 'mr_connector_wrapper';
 -- pgmer2::mr_connected
 CREATE  FUNCTION "mr_connected"(
 	"ego" TEXT, /* core::option::Option<&str> */
-	"context" TEXT /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
 ) RETURNS SETOF mr_t_link /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
