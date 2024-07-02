@@ -39,6 +39,7 @@ const VERSION : &str = match option_env!("CARGO_PKG_VERSION") {
 
 extension_sql!(r#"
 DROP FUNCTION IF EXISTS mr_for_beacons_global;
+DROP FUNCTION IF EXISTS mr_score_linear_sum;
 
 DROP FUNCTION IF EXISTS mr_service_url;
 DROP FUNCTION IF EXISTS mr_connector;
@@ -50,7 +51,6 @@ DROP FUNCTION IF EXISTS mr_node_score_linear_sum;
 DROP FUNCTION IF EXISTS mr_scores_superposition;
 DROP FUNCTION IF EXISTS mr_scores;
 DROP FUNCTION IF EXISTS mr_scores_linear_sum;
-DROP FUNCTION IF EXISTS mr_score_linear_sum;
 DROP FUNCTION IF EXISTS mr_graph;
 DROP FUNCTION IF EXISTS mr_nodes;
 DROP FUNCTION IF EXISTS mr_nodelist;
@@ -358,21 +358,6 @@ fn mr_scores_linear_sum(
 > {
   let src      = src.expect("src should not be null");
   let payload  = rmp_serde::to_vec(&((("src", "=", src), ), (), "null"))?;
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
-}
-
-#[pg_extern(immutable)]
-fn mr_score_linear_sum(
-  src  : Option<&str>,
-  dest : Option<&str>
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
-> {
-  let src      = src.expect("src should not be null");
-  let dest     = dest.expect("dest should not be null");
-  let payload  = rmp_serde::to_vec(&((("src", "=", src), ("dest", "=", dest)), (), "null"))?;
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -889,27 +874,6 @@ mod tests {
     assert_eq!(res[2].1, "U2");
     assert!(res[2].2 > 0.1);
     assert!(res[2].2 < 0.4);
-  }
-
-  #[pg_test]
-  fn score_linear_sum() {
-    let _ = crate::mr_reset().unwrap();
-
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
-
-    let res = collect_edges(crate::mr_score_linear_sum(
-      Some("U1"),
-      Some("U2")
-    ).unwrap());
-
-    assert_eq!(res.len(), 1);
-
-    assert_eq!(res[0].0, "U1");
-    assert_eq!(res[0].1, "U2");
-    assert!(res[0].2 > 0.1);
-    assert!(res[0].2 < 0.4);
   }
 
   #[pg_test]
