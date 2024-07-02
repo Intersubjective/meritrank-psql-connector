@@ -217,7 +217,7 @@ fn mr_node_score_superposition(
 fn mr_node_score(
   ego     : Option<&str>,
   target  : Option<&str>,
-  context : Option<&str>,
+  context : default!(Option<&str>, "''"),
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -294,13 +294,13 @@ fn scores_payload(
 #[pg_extern(immutable)]
 fn mr_scores_superposition(
   ego        : Option<&str>,
-  start_with : Option<&str>,
-  score_lt   : Option<f64>,
-  score_lte  : Option<f64>,
-  score_gt   : Option<f64>,
-  score_gte  : Option<f64>,
-  index      : Option<i32>,
-  count      : Option<i32>
+  start_with : default!(Option<&str>, "''"),
+  score_lt   : default!(Option<f64>,  "null"),
+  score_lte  : default!(Option<f64>,  "null"),
+  score_gt   : default!(Option<f64>,  "null"),
+  score_gte  : default!(Option<f64>,  "null"),
+  index      : default!(Option<i32>,  "null"),
+  count      : default!(Option<i32>,  "null")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -321,15 +321,15 @@ fn mr_scores_superposition(
 #[pg_extern(immutable)]
 fn mr_scores(
   ego           : Option<&str>,
-  hide_personal : Option<bool>,
-  context       : Option<&str>,
-  start_with    : Option<&str>,
-  score_lt      : Option<f64>,
-  score_lte     : Option<f64>,
-  score_gt      : Option<f64>,
-  score_gte     : Option<f64>,
-  index         : Option<i32>,
-  count         : Option<i32>
+  hide_personal : default!(Option<bool>, "false"),
+  context       : default!(Option<&str>, "''"),
+  start_with    : default!(Option<&str>, "''"),
+  score_lt      : default!(Option<f64>,  "null"),
+  score_lte     : default!(Option<f64>,  "null"),
+  score_gt      : default!(Option<f64>,  "null"),
+  score_gte     : default!(Option<f64>,  "null"),
+  index         : default!(Option<i32>,  "null"),
+  count         : default!(Option<i32>,  "null")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -381,10 +381,10 @@ fn mr_score_linear_sum(
 fn mr_graph(
   ego           : Option<&str>,
   focus         : Option<&str>,
-  context       : Option<&str>,
-  positive_only : Option<bool>,
-  index         : Option<i32>,
-  count         : Option<i32>
+  context       : default!(Option<&str>, "''"),
+  positive_only : default!(Option<bool>, "false"),
+  index         : default!(Option<i32>,  "null"),
+  count         : default!(Option<i32>,  "null")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -405,10 +405,10 @@ fn mr_graph(
 fn mr_nodes(
   ego           : Option<&str>,
   focus         : Option<&str>,
-  context       : Option<&str>,
-  positive_only : Option<bool>,
-  index         : Option<i32>,
-  count         : Option<i32>
+  context       : default!(Option<&str>, "''"),
+  positive_only : default!(Option<bool>, "false"),
+  index         : default!(Option<i32>,  "null"),
+  count         : default!(Option<i32>,  "null")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_node")>,
   Box<dyn Error + 'static>,
@@ -429,7 +429,7 @@ fn mr_nodes(
 
 #[pg_extern(immutable)]
 fn mr_nodelist(
-  context : Option<&str>
+  context : default!(Option<&str>, "''")
 ) -> Result<
   SetOfIterator<'static, String>,
   Box<dyn Error + 'static>,
@@ -449,7 +449,7 @@ fn mr_nodelist(
 
 #[pg_extern(immutable)]
 fn mr_edgelist(
-  context : Option<&str>
+  context : default!(Option<&str>, "''")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -466,7 +466,7 @@ fn mr_edgelist(
 #[pg_extern(immutable)]
 fn mr_connected(
   ego     : Option<&str>,
-  context : Option<&str>
+  context : default!(Option<&str>, "''")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_link")>,
   Box<dyn Error + 'static>,
@@ -490,7 +490,7 @@ fn mr_put_edge(
   src     : Option<&str>,
   dest    : Option<&str>,
   weight  : Option<f64>,
-  context : Option<&str>
+  context : default!(Option<&str>, "''")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error>,
@@ -509,7 +509,7 @@ fn mr_put_edge(
 fn mr_delete_edge(
   ego     : Option<&str>,
   target  : Option<&str>,
-  context : Option<&str>
+  context : default!(Option<&str>, "''")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let ego         = ego.expect("ego should not be null");
   let target      = target.expect("target should not be null");
@@ -523,7 +523,7 @@ fn mr_delete_edge(
 #[pg_extern]
 fn mr_delete_node(
   ego     : Option<&str>,
-  context : Option<&str>
+  context : default!(Option<&str>, "''")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let ego         = ego.expect("ego should not be null");
   let context     = context.unwrap_or("");
