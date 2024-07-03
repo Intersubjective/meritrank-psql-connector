@@ -9,11 +9,13 @@ The ordering of items is not stable, it is driven by a dependency graph.
 -- creates:
 --   Type(pgmer2::mr_t_edge)
 --   Type(pgmer2::mr_t_link)
---   Type(pgmer2::mr_t_node)
+--   Type(pgmer2::mr_t_stats)
 
 
 DROP FUNCTION IF EXISTS mr_for_beacons_global;
 DROP FUNCTION IF EXISTS mr_score_linear_sum;
+DROP FUNCTION IF EXISTS mr_nodes;
+DROP VIEW     IF EXISTS mr_t_node;
 
 DROP FUNCTION IF EXISTS mr_service_url;
 DROP FUNCTION IF EXISTS mr_connector;
@@ -26,7 +28,6 @@ DROP FUNCTION IF EXISTS mr_scores_superposition;
 DROP FUNCTION IF EXISTS mr_scores;
 DROP FUNCTION IF EXISTS mr_scores_linear_sum;
 DROP FUNCTION IF EXISTS mr_graph;
-DROP FUNCTION IF EXISTS mr_nodes;
 DROP FUNCTION IF EXISTS mr_nodelist;
 DROP FUNCTION IF EXISTS mr_edgelist;
 DROP FUNCTION IF EXISTS mr_connected;
@@ -38,35 +39,45 @@ DROP FUNCTION IF EXISTS mr_zerorec;
 
 DROP VIEW IF EXISTS mr_t_edge;
 DROP VIEW IF EXISTS mr_t_link;
-DROP VIEW IF EXISTS mr_t_node;
+DROP VIEW IF EXISTS mr_t_stats;
 
-CREATE VIEW mr_t_edge AS SELECT ''::text AS ego,    '' ::text             AS target, (0)::double precision AS score;
-CREATE VIEW mr_t_link AS SELECT ''::text AS source, '' ::text             AS target;
-CREATE VIEW mr_t_node AS SELECT ''::text AS name,   (0)::double precision AS weight;
+CREATE VIEW mr_t_edge  AS SELECT ''::text AS ego,    '' ::text             AS target, (0)::double precision AS score          WHERE false;
+CREATE VIEW mr_t_link  AS SELECT ''::text AS source, '' ::text             AS target                                          WHERE false;
+CREATE VIEW mr_t_stats AS SELECT ''::text AS name,   (0)::double precision AS score,  (0)::double precision AS score_reversed WHERE false;
 
 
--- src/lib.rs:533
+-- src/lib.rs:523
 -- pgmer2::mr_zerorec
 CREATE  FUNCTION "mr_zerorec"() RETURNS TEXT /* core::result::Result<alloc::string::String, alloc::boxed::Box<dyn core::error::Error>> */
 STRICT
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_zerorec_wrapper';
 
--- src/lib.rs:184
+-- src/lib.rs:442
+-- pgmer2::mr_users_stats
+CREATE  FUNCTION "mr_users_stats"(
+	"ego" TEXT, /* core::option::Option<&str> */
+	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
+) RETURNS SETOF mr_t_stats /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
+IMMUTABLE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'mr_users_stats_wrapper';
+
+-- src/lib.rs:186
 -- pgmer2::mr_service_url
 CREATE  FUNCTION "mr_service_url"() RETURNS TEXT /* &str */
 IMMUTABLE STRICT
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_service_url_wrapper';
 
--- src/lib.rs:194
+-- src/lib.rs:196
 -- pgmer2::mr_service
 CREATE  FUNCTION "mr_service"() RETURNS TEXT /* alloc::string::String */
 IMMUTABLE STRICT
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_service_wrapper';
 
--- src/lib.rs:295
+-- src/lib.rs:297
 -- pgmer2::mr_scores_superposition
 CREATE  FUNCTION "mr_scores_superposition"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -82,7 +93,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_scores_superposition_wrapper';
 
--- src/lib.rs:353
+-- src/lib.rs:355
 -- pgmer2::mr_scores_linear_sum
 CREATE  FUNCTION "mr_scores_linear_sum"(
 	"src" TEXT /* core::option::Option<&str> */
@@ -91,7 +102,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_scores_linear_sum_wrapper';
 
--- src/lib.rs:322
+-- src/lib.rs:324
 -- pgmer2::mr_scores
 CREATE  FUNCTION "mr_scores"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -109,14 +120,14 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_scores_wrapper';
 
--- src/lib.rs:522
+-- src/lib.rs:512
 -- pgmer2::mr_reset
 CREATE  FUNCTION "mr_reset"() RETURNS TEXT /* core::result::Result<alloc::string::String, alloc::boxed::Box<dyn core::error::Error>> */
 STRICT
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_reset_wrapper';
 
--- src/lib.rs:474
+-- src/lib.rs:464
 -- pgmer2::mr_put_edge
 CREATE  FUNCTION "mr_put_edge"(
 	"src" TEXT, /* core::option::Option<&str> */
@@ -127,21 +138,7 @@ CREATE  FUNCTION "mr_put_edge"(
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_put_edge_wrapper';
 
--- src/lib.rs:390
--- pgmer2::mr_nodes
-CREATE  FUNCTION "mr_nodes"(
-	"ego" TEXT, /* core::option::Option<&str> */
-	"focus" TEXT, /* core::option::Option<&str> */
-	"context" TEXT DEFAULT '', /* core::option::Option<&str> */
-	"positive_only" bool DEFAULT false, /* core::option::Option<bool> */
-	"index" INT DEFAULT null, /* core::option::Option<i32> */
-	"count" INT DEFAULT null /* core::option::Option<i32> */
-) RETURNS SETOF mr_t_node /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
-IMMUTABLE
-LANGUAGE c /* Rust */
-AS 'MODULE_PATHNAME', 'mr_nodes_wrapper';
-
--- src/lib.rs:416
+-- src/lib.rs:392
 -- pgmer2::mr_nodelist
 CREATE  FUNCTION "mr_nodelist"(
 	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
@@ -150,7 +147,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_nodelist_wrapper';
 
--- src/lib.rs:202
+-- src/lib.rs:204
 -- pgmer2::mr_node_score_superposition
 CREATE  FUNCTION "mr_node_score_superposition"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -160,7 +157,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_node_score_superposition_wrapper';
 
--- src/lib.rs:235
+-- src/lib.rs:237
 -- pgmer2::mr_node_score_linear_sum
 CREATE  FUNCTION "mr_node_score_linear_sum"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -170,7 +167,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_node_score_linear_sum_wrapper';
 
--- src/lib.rs:217
+-- src/lib.rs:219
 -- pgmer2::mr_node_score
 CREATE  FUNCTION "mr_node_score"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -181,7 +178,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_node_score_wrapper';
 
--- src/lib.rs:366
+-- src/lib.rs:368
 -- pgmer2::mr_graph
 CREATE  FUNCTION "mr_graph"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -195,7 +192,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_graph_wrapper';
 
--- src/lib.rs:436
+-- src/lib.rs:412
 -- pgmer2::mr_edgelist
 CREATE  FUNCTION "mr_edgelist"(
 	"context" TEXT DEFAULT '' /* core::option::Option<&str> */
@@ -204,7 +201,7 @@ IMMUTABLE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_edgelist_wrapper';
 
--- src/lib.rs:509
+-- src/lib.rs:499
 -- pgmer2::mr_delete_node
 CREATE  FUNCTION "mr_delete_node"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -213,7 +210,7 @@ CREATE  FUNCTION "mr_delete_node"(
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_delete_node_wrapper';
 
--- src/lib.rs:494
+-- src/lib.rs:484
 -- pgmer2::mr_delete_edge
 CREATE  FUNCTION "mr_delete_edge"(
 	"ego" TEXT, /* core::option::Option<&str> */
@@ -223,14 +220,14 @@ CREATE  FUNCTION "mr_delete_edge"(
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_delete_edge_wrapper';
 
--- src/lib.rs:189
+-- src/lib.rs:191
 -- pgmer2::mr_connector
 CREATE  FUNCTION "mr_connector"() RETURNS TEXT /* &str */
 IMMUTABLE STRICT
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'mr_connector_wrapper';
 
--- src/lib.rs:452
+-- src/lib.rs:426
 -- pgmer2::mr_connected
 CREATE  FUNCTION "mr_connected"(
 	"ego" TEXT, /* core::option::Option<&str> */

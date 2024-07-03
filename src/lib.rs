@@ -73,7 +73,7 @@ CREATE VIEW mr_t_stats AS SELECT ''::text AS name,   (0)::double precision AS sc
 "#,
   name      = "bootstrap_raw",
   bootstrap,
-  creates   = [Type(mr_t_edge), Type(mr_t_link), Type(mr_t_node)],
+  creates   = [Type(mr_t_edge), Type(mr_t_link), Type(mr_t_stats)],
 );
 
 //  ================================================================
