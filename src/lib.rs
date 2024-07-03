@@ -40,6 +40,8 @@ const VERSION : &str = match option_env!("CARGO_PKG_VERSION") {
 extension_sql!(r#"
 DROP FUNCTION IF EXISTS mr_for_beacons_global;
 DROP FUNCTION IF EXISTS mr_score_linear_sum;
+DROP FUNCTION IF EXISTS mr_nodes;
+DROP VIEW     IF EXISTS mr_t_node;
 
 DROP FUNCTION IF EXISTS mr_service_url;
 DROP FUNCTION IF EXISTS mr_connector;
@@ -52,7 +54,6 @@ DROP FUNCTION IF EXISTS mr_scores_superposition;
 DROP FUNCTION IF EXISTS mr_scores;
 DROP FUNCTION IF EXISTS mr_scores_linear_sum;
 DROP FUNCTION IF EXISTS mr_graph;
-DROP FUNCTION IF EXISTS mr_nodes;
 DROP FUNCTION IF EXISTS mr_nodelist;
 DROP FUNCTION IF EXISTS mr_edgelist;
 DROP FUNCTION IF EXISTS mr_connected;
@@ -64,11 +65,11 @@ DROP FUNCTION IF EXISTS mr_zerorec;
 
 DROP VIEW IF EXISTS mr_t_edge;
 DROP VIEW IF EXISTS mr_t_link;
-DROP VIEW IF EXISTS mr_t_node;
+DROP VIEW IF EXISTS mr_t_stats;
 
-CREATE VIEW mr_t_edge AS SELECT ''::text AS ego,    '' ::text             AS target, (0)::double precision AS score;
-CREATE VIEW mr_t_link AS SELECT ''::text AS source, '' ::text             AS target;
-CREATE VIEW mr_t_node AS SELECT ''::text AS name,   (0)::double precision AS weight;
+CREATE VIEW mr_t_edge  AS SELECT ''::text AS ego,    '' ::text             AS target, (0)::double precision AS score          WHERE false;
+CREATE VIEW mr_t_link  AS SELECT ''::text AS source, '' ::text             AS target                                          WHERE false;
+CREATE VIEW mr_t_stats AS SELECT ''::text AS name,   (0)::double precision AS score,  (0)::double precision AS score_reversed WHERE false;
 "#,
   name      = "bootstrap_raw",
   bootstrap,
@@ -99,7 +100,7 @@ fn request<T: for<'a> Deserialize<'a>>(
   payload    : Vec<u8>,
   timeout_msec : Option<u64>,
 ) -> Result<Vec<T>, Box<dyn Error + 'static>> {
-  let msg       = request_raw(payload, timeout_msec)?;
+  let msg = request_raw(payload, timeout_msec)?;
   let slice : &[u8] = msg.as_slice();
   rmp_serde::from_slice(slice).or_else(|_| {
     let err: String = rmp_serde::from_slice(slice)?;
@@ -157,18 +158,19 @@ fn make_setof_link(response : &Vec<(String, String)>) -> Result<
   return Ok(SetOfIterator::new(tuples));
 }
 
-fn make_setof_node(response : &Vec<(String, f64)>) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_node")>,
+fn make_setof_stats(response : &Vec<(String, f64, f64)>) -> Result<
+  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_stats")>,
   Box<dyn Error + 'static>,
 > {
   let tuples : Vec<PgHeapTuple<'_, AllocatedByRust>> =
     response
       .iter()
-      .map(|(name, weight)| {
-        let mut node = PgHeapTuple::new_composite_type("mr_t_node").unwrap();
-        node.set_by_name("name",    name.as_str()).unwrap();
-        node.set_by_name("weight", *weight).unwrap();
-        return node;
+      .map(|(name, score, score_reversed)| {
+        let mut stats = PgHeapTuple::new_composite_type("mr_t_stats").unwrap();
+        stats.set_by_name("name",           name.as_str()).unwrap();
+        stats.set_by_name("score",          *score).unwrap();
+        stats.set_by_name("score_reversed", *score_reversed).unwrap();
+        return stats;
       })
       .collect();
   return Ok(SetOfIterator::new(tuples));
@@ -387,32 +389,6 @@ fn mr_graph(
 }
 
 #[pg_extern(immutable)]
-fn mr_nodes(
-  ego           : Option<&str>,
-  focus         : Option<&str>,
-  context       : default!(Option<&str>, "''"),
-  positive_only : default!(Option<bool>, "false"),
-  index         : default!(Option<i32>,  "null"),
-  count         : default!(Option<i32>,  "null")
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_node")>,
-  Box<dyn Error + 'static>,
-> {
-  let ego           = ego.expect("ego should not be null");
-  let focus         = focus.expect("focus should not be null");
-  let context       = context.unwrap_or("");
-  let positive_only = positive_only.unwrap_or(false);
-  let index         = index.unwrap_or(0) as u32;
-  let count         = count.unwrap_or(i32::MAX) as u32;
-  let payload       = rmp_serde::to_vec(&(((ego, "gravity_nodes", focus), positive_only, index, count), ()))?;
-  let payload       = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-  let response      = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_node(&response);
-}
-
-/// list functions
-
-#[pg_extern(immutable)]
 fn mr_nodelist(
   context : default!(Option<&str>, "''")
 ) -> Result<
@@ -446,8 +422,6 @@ fn mr_edgelist(
   return make_setof_edge(&response);
 }
 
-// connected nodes
-
 #[pg_extern(immutable)]
 fn mr_connected(
   ego     : Option<&str>,
@@ -462,6 +436,22 @@ fn mr_connected(
   let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_link(&response);
+}
+
+#[pg_extern(immutable)]
+fn mr_users_stats(
+  ego     : Option<&str>,
+  context : default!(Option<&str>, "''")
+) -> Result<
+  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_stats")>,
+  Box<dyn Error + 'static>,
+> {
+  let ego      = ego.expect("ego should not be null");
+  let context  = context.unwrap_or("");
+  let payload  = rmp_serde::to_vec(&("users_stats", ego, ()))?;
+  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return make_setof_stats(&response);
 }
 
 //  ================================================================
@@ -877,31 +867,6 @@ mod tests {
   }
 
   #[pg_test]
-  fn nodes() {
-    let _ = crate::mr_reset().unwrap();
-
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
-    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
-
-    let res : Vec<(String, f64)> = 
-      crate::mr_nodes(
-        Some("U1"),
-        Some("U2"),
-        None,
-        Some(false),
-        None, None
-      ).unwrap()
-        .map(|x| (
-          x.get_by_name("name").unwrap().unwrap(),
-          x.get_by_name("weight").unwrap().unwrap(),
-        ))
-        .collect();
-
-    assert_eq!(res.len(), 2);
-  }
-
-  #[pg_test]
   fn nodelist() {
     let _ = crate::mr_reset().unwrap();
 
@@ -939,6 +904,68 @@ mod tests {
     for x in res {
       assert_eq!(x.0, "U1");
       assert!(x.1 == "U2" || x.1 == "U3");
+    }
+  }
+
+  #[pg_test]
+  fn users_stats() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(3.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U1"), Some(2.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(4.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U3"), Some("U1"), Some(3.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None).unwrap();
+
+    let res : Vec<(String, f64, f64)> =
+      crate::mr_users_stats(Some("U1"), None).unwrap()
+        .map(|x| (
+          x.get_by_name("name").unwrap().unwrap(),
+          x.get_by_name("score").unwrap().unwrap(),
+          x.get_by_name("score_reversed").unwrap().unwrap(),
+        ))
+        .collect();
+
+    assert_eq!(res.len(), 3);
+
+    let mut u1 = true;
+    let mut u2 = true;
+    let mut u3 = true;
+
+    for x in res.iter() {
+      match x.0.as_str() {
+        "U1" => {
+          assert!(res[0].1 > 0.3);
+          assert!(res[0].1 < 0.45);
+          assert!(res[0].2 > 0.3);
+          assert!(res[0].2 < 0.45);
+          assert!(u1);
+          u1 = false;
+        },
+
+        "U2" => {
+          assert!(res[1].1 > 0.3);
+          assert!(res[1].1 < 0.4);
+          assert!(res[1].2 > 0.2);
+          assert!(res[1].2 < 0.35);
+          assert!(u2);
+          u2 = false;
+        },
+
+        "U3" => {
+          assert!(res[2].1 > 0.2);
+          assert!(res[2].1 < 0.35);
+          assert!(res[2].2 > 0.25);
+          assert!(res[2].2 < 0.35);
+          assert!(u3);
+          u3 = false;
+        },
+
+        _ => {
+          assert!(false);
+        },
+      };
     }
   }
 }
