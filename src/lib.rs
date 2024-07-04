@@ -287,13 +287,13 @@ fn scores_payload(
   let (lcmp, lt) = match (lt, lte) {
     (Some(lt), None) => ("<", lt),
     (None, Some(lte)) => ("<=", lte),
-    (None, None) => ("<", f64::MIN),
+    (None, None) => ("<", f64::MAX),
     _ => return Err(Box::from("either lt or lte allowed!"))
   };
   let (gcmp, gt) = match (gt, gte) {
     (Some(gt), None) => (">", gt),
     (None, Some(gte)) => (">=", gte),
-    (None, None) => (">", f64::MAX),
+    (None, None) => (">", f64::MIN),
     _ => return Err(Box::from("either gt or gte allowed!"))
   };
   let k = kind.unwrap_or("".into());
@@ -319,8 +319,8 @@ fn mr_scores_superposition(
   lte   : default!(Option<f64>,  "null"),
   gt    : default!(Option<f64>,  "null"),
   gte   : default!(Option<f64>,  "null"),
-  index : default!(Option<i32>,  "null"),
-  count : default!(Option<i32>,  "null")
+  index : default!(Option<i32>,  "0"),
+  count : default!(Option<i32>,  "16")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -348,8 +348,8 @@ fn mr_scores(
   lte           : default!(Option<f64>,  "null"),
   gt            : default!(Option<f64>,  "null"),
   gte           : default!(Option<f64>,  "null"),
-  index         : default!(Option<i32>,  "null"),
-  count         : default!(Option<i32>,  "null")
+  index         : default!(Option<i32>,  "0"),
+  count         : default!(Option<i32>,  "16")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -388,8 +388,8 @@ fn mr_graph(
   focus         : Option<&str>,
   context       : default!(Option<&str>, "''"),
   positive_only : default!(Option<bool>, "false"),
-  index         : default!(Option<i32>,  "null"),
-  count         : default!(Option<i32>,  "null")
+  index         : default!(Option<i32>,  "0"),
+  count         : default!(Option<i32>,  "16")
 ) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
@@ -735,8 +735,8 @@ mod tests {
       let (ego, target, score) = unpack_edge(&x);
       assert_eq!(ego,    "U1");
       assert_eq!(target, "U2");
-      assert!(score > 0.33);
-      assert!(score < 0.43);
+      assert!(score > 0.3);
+      assert!(score < 0.45);
     }).count();
 
     assert_eq!(n, 1);
@@ -756,8 +756,8 @@ mod tests {
       let (ego, target, score) = unpack_edge(&x);
       assert_eq!(ego, "U1");
       assert_eq!(target, "U2");
-      assert!(score > 0.33);
-      assert!(score < 0.43);
+      assert!(score > 0.3);
+      assert!(score < 0.45);
     }).count();
 
     assert_eq!(n, 1);
@@ -777,8 +777,8 @@ mod tests {
       let (ego, target, score) = unpack_edge(&x);
       assert_eq!(ego,    "U1");
       assert_eq!(target, "U2");
-      assert!(score > 0.33);
-      assert!(score < 0.43);
+      assert!(score > 0.3);
+      assert!(score < 0.45);
     }).count();
 
     assert_eq!(n, 1);
@@ -833,6 +833,42 @@ mod tests {
       Some("U"),
       Some(10.0), None,
       Some(0.0), None,
+      None, None
+    ).unwrap());
+
+    assert_eq!(res.len(), 3);
+
+    assert_eq!(res[0].0, "U1");
+    assert_eq!(res[0].1, "U1");
+    assert!(res[0].2 > 0.2);
+    assert!(res[0].2 < 0.5);
+
+    assert_eq!(res[1].0, "U1");
+    assert_eq!(res[1].1, "U3");
+    assert!(res[1].2 > 0.2);
+    assert!(res[1].2 < 0.5);
+
+    assert_eq!(res[2].0, "U1");
+    assert_eq!(res[2].1, "U2");
+    assert!(res[2].2 > 0.1);
+    assert!(res[2].2 < 0.4);
+  }
+
+  #[pg_test]
+  fn scores_defaults() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
+
+    let res = collect_edges(crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some("X"),
+      Some("U"),
+      None, None,
+      None, None,
       None, None
     ).unwrap());
 

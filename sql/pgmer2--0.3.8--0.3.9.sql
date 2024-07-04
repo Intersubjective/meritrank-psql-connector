@@ -93,8 +93,8 @@ CREATE  FUNCTION "mr_scores_superposition"(
 	"lte" double precision DEFAULT null, /* core::option::Option<f64> */
 	"gt" double precision DEFAULT null, /* core::option::Option<f64> */
 	"gte" double precision DEFAULT null, /* core::option::Option<f64> */
-	"index" INT DEFAULT null, /* core::option::Option<i32> */
-	"count" INT DEFAULT null /* core::option::Option<i32> */
+	"index" INT DEFAULT 0, /* core::option::Option<i32> */
+	"count" INT DEFAULT 16 /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -120,8 +120,8 @@ CREATE  FUNCTION "mr_scores"(
 	"lte" double precision DEFAULT null, /* core::option::Option<f64> */
 	"gt" double precision DEFAULT null, /* core::option::Option<f64> */
 	"gte" double precision DEFAULT null, /* core::option::Option<f64> */
-	"index" INT DEFAULT null, /* core::option::Option<i32> */
-	"count" INT DEFAULT null /* core::option::Option<i32> */
+	"index" INT DEFAULT 0, /* core::option::Option<i32> */
+	"count" INT DEFAULT 16 /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
@@ -202,8 +202,8 @@ CREATE  FUNCTION "mr_graph"(
 	"focus" TEXT, /* core::option::Option<&str> */
 	"context" TEXT DEFAULT '', /* core::option::Option<&str> */
 	"positive_only" bool DEFAULT false, /* core::option::Option<bool> */
-	"index" INT DEFAULT null, /* core::option::Option<i32> */
-	"count" INT DEFAULT null /* core::option::Option<i32> */
+	"index" INT DEFAULT 0, /* core::option::Option<i32> */
+	"count" INT DEFAULT 16 /* core::option::Option<i32> */
 ) RETURNS SETOF mr_t_edge /* pgrx::heap_tuple::PgHeapTuple<pgrx::pgbox::AllocatedByRust> */
 IMMUTABLE
 LANGUAGE c /* Rust */
