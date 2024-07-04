@@ -591,7 +591,8 @@ mod tests {
 
     let n = res.count();
 
-    assert!(n > 25 && n < 60);
+    assert!(n > 25);
+    assert!(n < 60);
   }
 
   #[pg_test]
@@ -613,8 +614,37 @@ mod tests {
 
     let n = res.count();
 
-    assert!(n > 25 && n < 60);
+    assert!(n > 25);
+    assert!(n < 60);
   }
+
+  #[pg_test]
+  fn zerorec_scores() {
+    let _ = crate::mr_reset().unwrap();
+
+    put_testing_edges();
+
+    let _ = crate::mr_zerorec().unwrap();
+
+    let res = crate::mr_scores(
+      Some("Uadeb43da4abb"),
+      Some(true),
+      Some(""),
+      Some("B"),
+      None,
+      None,
+      Some(0.0),
+      None,
+      Some(0),
+      Some(i32::MAX)
+    ).unwrap();
+
+    let n = res.count();
+
+    assert!(n > 5);
+    assert!(n < 40);
+  }
+
 
   #[pg_test]
   fn service() {
