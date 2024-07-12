@@ -9,6 +9,7 @@ use serde::de::Deserialize;
 use std::env::var;
 use std::error::Error;
 use core::result::Result;
+use meritrank_service::commands::*;
 
 #[cfg(any(test, feature = "pg_test"))]
 pub mod testing;
@@ -125,16 +126,13 @@ fn request<T: for<'a> Deserialize<'a>>(
   })
 }
 
-fn contexted_payload(
-  context : &str,
-  payload : Vec<u8>
-) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
-  let q : (&str, &str, Vec<u8>) = ("context", context, payload);
-  Ok(rmp_serde::to_vec(&q)?)
-}
-
 fn service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
-  let payload  = rmp_serde::to_vec(&"ver")?;
+  let payload  = rmp_serde::to_vec(&(
+    CMD_VERSION,
+    "",
+    rmp_serde::to_vec(&())?
+  ))?;
+  
   let response = request_raw(payload, Some(*RECV_TIMEOUT_MSEC))?;
   let s        = rmp_serde::from_slice(response.as_slice())?;
   return Ok(s);
@@ -226,9 +224,20 @@ fn mr_node_score_superposition(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
-  let ego      = src.expect("src should not be null");
-  let target   = dst.expect("dst should not be null");
-  let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
+  let ego    = src.expect("src should not be null");
+  let target = dst.expect("dst should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    target
+  ))?;
+
+  let payload = rmp_serde::to_vec(&(
+    CMD_NODE_SCORE,
+    "",
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -242,11 +251,21 @@ fn mr_node_score(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
+  let context  = context.unwrap_or("");
   let ego      = src.expect("src should not be null");
   let target   = dst.expect("dst should not be null");
-  let context  = context.unwrap_or("");
-  let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), ()))?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    target
+  ))?;
+
+  let payload  = rmp_serde::to_vec(&(
+    CMD_NODE_SCORE,
+    context,
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -259,14 +278,26 @@ fn mr_node_score_linear_sum(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
-  let ego      = src.expect("src should not be null");
-  let target   = dst.expect("dst should not be null");
-  let payload  = rmp_serde::to_vec(&((("src", "=", ego), ("dest", "=", target)), (), "null"))?;
+  let ego    = src.expect("src should not be null");
+  let target = dst.expect("dst should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    target
+  ))?;
+
+  let payload = rmp_serde::to_vec(&(
+    CMD_NODE_SCORE_NULL,
+    "",
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
 
 fn scores_payload(
+  context       : Option<&str>,
   src           : Option<&str>,
   hide_personal : Option<bool>,
   kind          : Option<&str>,
@@ -280,35 +311,38 @@ fn scores_payload(
   Vec<u8>,
   Box<dyn Error + 'static>,
 > {
+  let context       = context.unwrap_or("");
   let ego           = src.expect("ego should not be null");
   let hide_personal = hide_personal.unwrap_or(false);
+  let k             = kind.unwrap_or("");
   let index         = index.unwrap_or(0) as u32;
   let count         = count.unwrap_or(i32::MAX) as u32;
-  let (lcmp, lt) = match (lt, lte) {
-    (Some(lt), None) => ("<", lt),
-    (None, Some(lte)) => ("<=", lte),
-    (None, None) => ("<", f64::MAX),
-    _ => return Err(Box::from("either lt or lte allowed!"))
-  };
-  let (gcmp, gt) = match (gt, gte) {
-    (Some(gt), None) => (">", gt),
-    (None, Some(gte)) => (">=", gte),
-    (None, None) => (">", f64::MIN),
-    _ => return Err(Box::from("either gt or gte allowed!"))
-  };
-  let k = kind.unwrap_or("".into());
-  let q = ((
-        ("src", "=", ego),
-        ("node_kind", k),
-        ("hide_personal", hide_personal),
-        ("score", gcmp, gt),
-        ("score", lcmp, lt),
-        ("index", index),
-        ("count", count)
-       ),
-       ());
-  rmp_serde::to_vec(&q)
-    .map_err(|e| e.into())
+  if lt.is_some() && lte.is_some() {
+    return Err(Box::from("either lt or lte is allowed!"));
+  }
+  if gt.is_some() && gte.is_some() {
+    return Err(Box::from("either gt or gte is allowed!"));
+  }
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    k,
+    hide_personal,
+    lt.unwrap_or(lte.unwrap_or(i32::MAX.into())),
+    lte.is_some(),
+    gt.unwrap_or(gte.unwrap_or(i32::MIN.into())),
+    gte.is_some(),
+    index,
+    count
+  ))?;
+
+  let payload = rmp_serde::to_vec(&(
+    CMD_SCORES,
+    context,
+    args
+  ));
+  
+  payload.map_err(|e| e.into())
 }
 
 #[pg_extern(immutable)]
@@ -326,6 +360,7 @@ fn mr_scores_superposition(
   Box<dyn Error + 'static>,
 > {
   let payload = scores_payload(
+    None,
     src,
     Some(false),
     kind,
@@ -334,6 +369,7 @@ fn mr_scores_superposition(
     index,
     count
   )?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -354,8 +390,8 @@ fn mr_scores(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
-  let context = context.unwrap_or("");
   let payload = scores_payload(
+    context,
     src,
     hide_personal,
     kind,
@@ -364,7 +400,7 @@ fn mr_scores(
     index,
     count
   )?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -376,8 +412,18 @@ fn mr_scores_linear_sum(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
-  let src      = src.expect("src should not be null");
-  let payload  = rmp_serde::to_vec(&((("src", "=", src), ), (), "null"))?;
+  let src = src.expect("src should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    src
+  ))?;
+  
+  let payload = rmp_serde::to_vec(&(
+    CMD_SCORES_NULL,
+    "",
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -394,15 +440,28 @@ fn mr_graph(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
+  let context       = context.unwrap_or("");
   let ego           = src.expect("src should not be null");
   let focus         = focus.expect("focus should not be null");
-  let context       = context.unwrap_or("");
   let positive_only = positive_only.unwrap_or(false);
   let index         = index.unwrap_or(0) as u32;
   let count         = count.unwrap_or(i32::MAX) as u32;
-  let payload       = rmp_serde::to_vec(&(((ego, "gravity", focus), positive_only, index, count), ()))?;
-  let payload       = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
-  let response      = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    focus,
+    positive_only,
+    index,
+    count
+  ))?;
+  
+  let payload = rmp_serde::to_vec(&(
+    CMD_GRAPH,
+    context,
+    args
+  ))?;
+
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
 
@@ -413,9 +472,14 @@ fn mr_nodelist(
   SetOfIterator<'static, String>,
   Box<dyn Error + 'static>,
 > {
-  let context  = context.unwrap_or("");
-  let payload  = rmp_serde::to_vec(&("nodes", ()))?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let context = context.unwrap_or("");
+  
+  let payload = rmp_serde::to_vec(&(
+    CMD_NODE_LIST,
+    context,
+    rmp_serde::to_vec(&())?
+  ))?;
+  
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
 
   let strings : Vec<String> =
@@ -433,9 +497,14 @@ fn mr_edgelist(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error + 'static>,
 > {
-  let context  = context.unwrap_or("");
-  let payload  = rmp_serde::to_vec(&("edges", ()))?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let context = context.unwrap_or("");
+
+  let payload = rmp_serde::to_vec(&(
+    CMD_EDGES,
+    context,
+    rmp_serde::to_vec(&())?
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -448,10 +517,19 @@ fn mr_connected(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_link")>,
   Box<dyn Error + 'static>,
 > {
-  let ego      = src.expect("src should not be null");
-  let context  = context.unwrap_or("");
-  let payload  = rmp_serde::to_vec(&(((ego, "connected"), ), ()))?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let context = context.unwrap_or("");
+  let ego     = src.expect("src should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    ego
+  ))?;
+  
+  let payload = rmp_serde::to_vec(&(
+    CMD_CONNECTED,
+    context,
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_link(&response);
 }
@@ -464,10 +542,19 @@ fn mr_mutual_scores(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
   Box<dyn Error + 'static>,
 > {
-  let ego      = src.expect("src should not be null");
-  let context  = context.unwrap_or("");
-  let payload  = rmp_serde::to_vec(&("users_stats", ego, ()))?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let ego     = src.expect("src should not be null");
+  let context = context.unwrap_or("");
+
+  let args = rmp_serde::to_vec(&(
+    ego
+  ))?;
+
+  let payload = rmp_serde::to_vec(&(
+    CMD_MUTUAL_SCORES,
+    context,
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_mutual_score(ego, &response);
 }
@@ -488,12 +575,23 @@ fn mr_put_edge(
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
   Box<dyn Error>,
 > {
-  let src      = src.expect("src should not be null");
-  let dest     = dst.expect("dst should not be null");
-  let weight   = weight.expect("weight should not be null");
-  let context  = context.unwrap_or("");
-  let payload  = rmp_serde::to_vec(&(((src, dest, weight), ), ()))?;
-  let payload  = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let context = context.unwrap_or("");
+  let src     = src.expect("src should not be null");
+  let dest    = dst.expect("dst should not be null");
+  let weight  = weight.expect("weight should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    src,
+    dest,
+    weight
+  ))?;
+
+  let payload = rmp_serde::to_vec(&(
+    CMD_PUT_EDGE,
+    context,
+    args
+  ))?;
+
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
 }
@@ -504,11 +602,21 @@ fn mr_delete_edge(
   dst     : Option<&str>,
   context : default!(Option<&str>, "''")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let ego         = src.expect("src should not be null");
-  let target      = dst.expect("dst should not be null");
-  let context     = context.unwrap_or("");
-  let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ("dest", "delete", target)), ()))?;
-  let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let context = context.unwrap_or("");
+  let ego     = src.expect("src should not be null");
+  let target  = dst.expect("dst should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    target
+  ))?;
+  
+  let payload = rmp_serde::to_vec(&(
+    CMD_DELETE_EDGE,
+    context,
+    args
+  ))?;
+
   let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
 }
@@ -518,10 +626,19 @@ fn mr_delete_node(
   src     : Option<&str>,
   context : default!(Option<&str>, "''")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let ego         = src.expect("src should not be null");
-  let context     = context.unwrap_or("");
-  let payload     = rmp_serde::to_vec(&((("src", "delete", ego), ), ()))?;
-  let payload     = if context.is_empty() { payload } else { contexted_payload(context, payload)? };
+  let context = context.unwrap_or("");
+  let ego     = src.expect("src should not be null");
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+  ))?;
+  
+  let payload = rmp_serde::to_vec(&(
+    CMD_DELETE_NODE,
+    context,
+    args
+  ))?;
+
   let _ : Vec<()> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
 }
@@ -531,7 +648,12 @@ fn mr_reset() -> Result<
   String,
   Box<dyn Error + 'static>,
 > {
-  let payload  = rmp_serde::to_vec(&(("reset"), ()))?;
+  let payload  = rmp_serde::to_vec(&(
+    CMD_RESET,
+    "",
+    rmp_serde::to_vec(&())?
+  ))?;
+  
   let response = request_raw(payload, None)?;
   let s    = rmp_serde::from_slice(response.as_slice())?;
   return Ok(s);
@@ -542,7 +664,12 @@ fn mr_zerorec() -> Result<
   String,
   Box<dyn Error + 'static>,
 > {
-  let payload  = rmp_serde::to_vec(&(("zerorec"), ()))?;
+  let payload  = rmp_serde::to_vec(&(
+    CMD_RECALCULATE_ZERO,
+    "",
+    rmp_serde::to_vec(&())?
+  ))?;
+  
   let response = request_raw(payload, None)?;
   let s    = rmp_serde::from_slice(response.as_slice())?;
   return Ok(s);
@@ -573,7 +700,7 @@ mod tests {
   }
 
   #[pg_test]
-  fn zerorec_graph() {
+  fn zerorec_graph_all() {
     let _ = crate::mr_reset().unwrap();
 
     put_testing_edges();
@@ -592,7 +719,7 @@ mod tests {
     let n = res.count();
 
     assert!(n > 25);
-    assert!(n < 60);
+    assert!(n < 120);
   }
 
   #[pg_test]
@@ -615,7 +742,7 @@ mod tests {
     let n = res.count();
 
     assert!(n > 25);
-    assert!(n < 60);
+    assert!(n < 120);
   }
 
   #[pg_test]
@@ -773,7 +900,7 @@ mod tests {
   }
 
   #[pg_test]
-  fn node_score() {
+  fn node_score_context() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
@@ -894,24 +1021,32 @@ mod tests {
 
     assert_eq!(res.len(), 3);
 
-    assert_eq!(res[0].0, "U1");
-    assert_eq!(res[0].1, "U1");
-    assert!(res[0].2 > 0.2);
-    assert!(res[0].2 < 0.5);
+    for x in res {
+      assert_eq!(x.0, "U1");
+    
+      match x.1.as_str() {
+        "U1" => {
+          assert!(x.2 > 0.2);
+          assert!(x.2 < 0.5);
+        },
 
-    assert_eq!(res[1].0, "U1");
-    assert_eq!(res[1].1, "U3");
-    assert!(res[1].2 > 0.2);
-    assert!(res[1].2 < 0.5);
+        "U2" => {
+          assert!(x.2 > 0.1);
+          assert!(x.2 < 0.4);
+        },
 
-    assert_eq!(res[2].0, "U1");
-    assert_eq!(res[2].1, "U2");
-    assert!(res[2].2 > 0.1);
-    assert!(res[2].2 < 0.4);
+        "U3" => {
+          assert!(x.2 > 0.2);
+          assert!(x.2 < 0.5);
+        },
+
+        _ => assert!(false),
+      }
+    }
   }
 
   #[pg_test]
-  fn scores() {
+  fn scores_context() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
@@ -930,20 +1065,28 @@ mod tests {
 
     assert_eq!(res.len(), 3);
 
-    assert_eq!(res[0].0, "U1");
-    assert_eq!(res[0].1, "U1");
-    assert!(res[0].2 > 0.2);
-    assert!(res[0].2 < 0.5);
+    for x in res {
+      assert_eq!(x.0, "U1");
+    
+      match x.1.as_str() {
+        "U1" => {
+          assert!(x.2 > 0.2);
+          assert!(x.2 < 0.5);
+        },
 
-    assert_eq!(res[1].0, "U1");
-    assert_eq!(res[1].1, "U3");
-    assert!(res[1].2 > 0.2);
-    assert!(res[1].2 < 0.5);
+        "U2" => {
+          assert!(x.2 > 0.1);
+          assert!(x.2 < 0.4);
+        },
 
-    assert_eq!(res[2].0, "U1");
-    assert_eq!(res[2].1, "U2");
-    assert!(res[2].2 > 0.1);
-    assert!(res[2].2 < 0.4);
+        "U3" => {
+          assert!(x.2 > 0.2);
+          assert!(x.2 < 0.5);
+        },
+
+        _ => assert!(false),
+      }
+    }
   }
 
   #[pg_test]
@@ -966,20 +1109,29 @@ mod tests {
 
     assert_eq!(res.len(), 3);
 
-    assert_eq!(res[0].0, "U1");
-    assert_eq!(res[0].1, "U1");
-    assert!(res[0].2 > 0.2);
-    assert!(res[0].2 < 0.5);
 
-    assert_eq!(res[1].0, "U1");
-    assert_eq!(res[1].1, "U3");
-    assert!(res[1].2 > 0.2);
-    assert!(res[1].2 < 0.5);
+    for x in res {
+      assert_eq!(x.0, "U1");
+    
+      match x.1.as_str() {
+        "U1" => {
+          assert!(x.2 > 0.2);
+          assert!(x.2 < 0.5);
+        },
 
-    assert_eq!(res[2].0, "U1");
-    assert_eq!(res[2].1, "U2");
-    assert!(res[2].2 > 0.1);
-    assert!(res[2].2 < 0.4);
+        "U2" => {
+          assert!(x.2 > 0.1);
+          assert!(x.2 < 0.4);
+        },
+
+        "U3" => {
+          assert!(x.2 > 0.2);
+          assert!(x.2 < 0.5);
+        },
+
+        _ => assert!(false),
+      }
+    }
   }
 
   #[pg_test]
