@@ -9,7 +9,7 @@ VER=$( cargo read-manifest | jq -r '.version' )
 VER0=$( echo $VER | awk -F. -v OFS=. '{$NF -= 1; print}' )
 VER1=$( echo $VER | awk -F. -v OFS=. '{$NF -= 2; print}' )
 VER2=$( echo $VER | awk -F. -v OFS=. '{$NF -= 3; print}' )
-VER2=$( echo $VER | awk -F. -v OFS=. '{$NF -= 4; print}' )
+VER3=$( echo $VER | awk -F. -v OFS=. '{$NF -= 4; print}' )
 
 [ -d extension ] || mkdir extension
 sed 's/CREATE  FUNCTION/CREATE OR REPLACE FUNCTION/g' "$FOLDER/pgmer2--$VER.sql" > "extension/pgmer2--$VER.sql"

@@ -14,5 +14,5 @@ ENV MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
 ENV MERITRANK_RECV_TIMEOUT_MSEC=10000
 
 COPY --from=compile /usr/project/target/release/pgmer2-pg16/usr/lib/postgresql16/pgmer2.so /usr/local/lib/postgresql/pgmer2.so
-COPY --from=compile extension /usr/local/share/postgresql/extension
+COPY --from=compile /usr/project/extension /usr/local/share/postgresql/extension
 COPY 20_pgmer2.sh /docker-entrypoint-initdb.d/20_pgmer2.sh
