@@ -39,6 +39,7 @@ const VERSION : &str = match option_env!("CARGO_PKG_VERSION") {
 //  ================================================================
 
 extension_sql!(r#"
+-- deprecated
 DROP FUNCTION IF EXISTS mr_for_beacons_global;
 DROP FUNCTION IF EXISTS mr_score_linear_sum;
 DROP FUNCTION IF EXISTS mr_nodes;
@@ -46,43 +47,18 @@ DROP FUNCTION IF EXISTS mr_users_stats;
 DROP VIEW     IF EXISTS mr_t_node;
 DROP VIEW     IF EXISTS mr_t_stats;
 
-DROP FUNCTION IF EXISTS mr_service_url;
-DROP FUNCTION IF EXISTS mr_connector;
-DROP FUNCTION IF EXISTS mr_service_wrapped;
-DROP FUNCTION IF EXISTS mr_service;
-DROP FUNCTION IF EXISTS mr_node_score_superposition;
-DROP FUNCTION IF EXISTS mr_node_score;
-DROP FUNCTION IF EXISTS mr_node_score_linear_sum;
-DROP FUNCTION IF EXISTS mr_scores_superposition;
-DROP FUNCTION IF EXISTS mr_scores;
-DROP FUNCTION IF EXISTS mr_scores_linear_sum;
-DROP FUNCTION IF EXISTS mr_graph;
-DROP FUNCTION IF EXISTS mr_nodelist;
-DROP FUNCTION IF EXISTS mr_edgelist;
-DROP FUNCTION IF EXISTS mr_connected;
-DROP FUNCTION IF EXISTS mr_mutual_scores;
-DROP FUNCTION IF EXISTS mr_put_edge;
-DROP FUNCTION IF EXISTS mr_delete_edge;
-DROP FUNCTION IF EXISTS mr_delete_node;
-DROP FUNCTION IF EXISTS mr_reset;
-DROP FUNCTION IF EXISTS mr_zerorec;
-
-DROP VIEW IF EXISTS mr_t_edge;
-DROP VIEW IF EXISTS mr_t_link;
-DROP VIEW IF EXISTS mr_t_mutual_score;
-
-CREATE VIEW mr_t_edge AS SELECT
+CREATE OR REPLACE VIEW mr_t_edge AS SELECT
   '' ::text             AS src,
   '' ::text             AS dst,
   (0)::double precision AS score
   WHERE false;
 
-CREATE VIEW mr_t_link AS SELECT
+CREATE OR REPLACE VIEW mr_t_link AS SELECT
   ''::text AS src,
   ''::text AS dst
   WHERE false;
 
-CREATE VIEW mr_t_mutual_score AS SELECT
+CREATE OR REPLACE VIEW mr_t_mutual_score AS SELECT
   '' ::text             AS src,
   '' ::text             AS dst,
   (0)::double precision AS dst_score,
