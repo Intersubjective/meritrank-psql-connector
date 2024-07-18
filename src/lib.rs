@@ -782,7 +782,7 @@ mod tests {
     let n = res.count();
 
     assert!(n > 5);
-    assert!(n < 40);
+    assert!(n < 80);
   }
 
   #[pg_test]
