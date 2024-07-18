@@ -13,6 +13,7 @@ VER3=$( echo $VER | awk -F. -v OFS=. '{$NF -= 4; print}' )
 
 [ -d extension ] || mkdir extension
 sed 's/CREATE  FUNCTION/CREATE OR REPLACE FUNCTION/g' "$FOLDER/pgmer2--$VER.sql" > "extension/pgmer2--$VER.sql"
+cat extension/pgmer2--$VER.sql
 cp  extension/pgmer2--$VER.sql extension/pgmer2--$VER3--$VER.sql
 cp  extension/pgmer2--$VER.sql extension/pgmer2--$VER2--$VER.sql
 cp  extension/pgmer2--$VER.sql extension/pgmer2--$VER1--$VER.sql
