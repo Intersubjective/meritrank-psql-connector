@@ -11,8 +11,6 @@ See also:
 - `MERITRANK_SERVICE_URL` - default `tcp://127.0.0.1:10234`
 - `MERITRANK_RECV_TIMEOUT_MSEC` - default `10000` (10 seconds)
 
-`MERITRANK_RECV_TIMEOUT_MSEC` doesn't apply for `mr_sync`.
-
 ## Dev setup for manual testing
 - Set RUST_SERVICE_URL value
 

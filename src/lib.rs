@@ -106,6 +106,7 @@ fn service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
   let payload  = rmp_serde::to_vec(&(
     CMD_VERSION,
     "",
+    true,
     rmp_serde::to_vec(&())?
   ))?;
 
@@ -211,6 +212,7 @@ fn mr_node_score_superposition(
   let payload = rmp_serde::to_vec(&(
     CMD_NODE_SCORE,
     "",
+    true,
     args
   ))?;
 
@@ -239,6 +241,7 @@ fn mr_node_score(
   let payload  = rmp_serde::to_vec(&(
     CMD_NODE_SCORE,
     context,
+    true,
     args
   ))?;
 
@@ -265,6 +268,7 @@ fn mr_node_score_linear_sum(
   let payload = rmp_serde::to_vec(&(
     CMD_NODE_SCORE_NULL,
     "",
+    true,
     args
   ))?;
 
@@ -315,6 +319,7 @@ fn scores_payload(
   let payload = rmp_serde::to_vec(&(
     CMD_SCORES,
     context,
+    true,
     args
   ));
 
@@ -397,6 +402,7 @@ fn mr_scores_linear_sum(
   let payload = rmp_serde::to_vec(&(
     CMD_SCORES_NULL,
     "",
+    true,
     args
   ))?;
 
@@ -434,6 +440,7 @@ fn mr_graph(
   let payload = rmp_serde::to_vec(&(
     CMD_GRAPH,
     context,
+    true,
     args
   ))?;
 
@@ -453,6 +460,7 @@ fn mr_nodelist(
   let payload = rmp_serde::to_vec(&(
     CMD_NODE_LIST,
     context,
+    true,
     rmp_serde::to_vec(&())?
   ))?;
 
@@ -478,6 +486,7 @@ fn mr_edgelist(
   let payload = rmp_serde::to_vec(&(
     CMD_EDGES,
     context,
+    true,
     rmp_serde::to_vec(&())?
   ))?;
 
@@ -503,6 +512,7 @@ fn mr_connected(
   let payload = rmp_serde::to_vec(&(
     CMD_CONNECTED,
     context,
+    true,
     args
   ))?;
 
@@ -528,6 +538,7 @@ fn mr_mutual_scores(
   let payload = rmp_serde::to_vec(&(
     CMD_MUTUAL_SCORES,
     context,
+    true,
     args
   ))?;
 
@@ -537,20 +548,21 @@ fn mr_mutual_scores(
 
 #[pg_extern(immutable)]
 fn mr_sync(
-  timeout : default!(Option<i32>, "60000"),
+  timeout_msec : default!(Option<i32>, "6000000"),
 ) -> Result<
   &'static str,
   Box<dyn Error + 'static>
 > {
-  let timeout = if timeout.is_some() { Some(timeout.unwrap() as u64) } else { None };
+  let timeout_msec = match timeout_msec { Some(x) => Some(x as u64), _ => None, };
 
   let payload = rmp_serde::to_vec(&(
     CMD_SYNC,
     "",
+    true,
     rmp_serde::to_vec(&())?
   ))?;
 
-  let _ : () = request(payload, timeout)?;
+  let _ : () = request(payload, timeout_msec)?;
   return Ok("Ok");
 }
 
@@ -569,6 +581,7 @@ fn mr_log_level(
   let payload = rmp_serde::to_vec(&(
     CMD_LOG_LEVEL,
     "",
+    true,
     rmp_serde::to_vec(&(log_level as u32))?
   ))?;
 
@@ -600,6 +613,7 @@ fn mr_put_edge(
   let payload = rmp_serde::to_vec(&(
     CMD_PUT_EDGE,
     context,
+    false,
     args
   ))?;
 
@@ -625,6 +639,7 @@ fn mr_delete_edge(
   let payload = rmp_serde::to_vec(&(
     CMD_DELETE_EDGE,
     context,
+    false,
     args
   ))?;
 
@@ -647,6 +662,7 @@ fn mr_delete_node(
   let payload = rmp_serde::to_vec(&(
     CMD_DELETE_NODE,
     context,
+    false,
     args
   ))?;
 
@@ -662,6 +678,7 @@ fn mr_reset() -> Result<
   let payload  = rmp_serde::to_vec(&(
     CMD_RESET,
     "",
+    false,
     rmp_serde::to_vec(&())?
   ))?;
 
@@ -670,18 +687,24 @@ fn mr_reset() -> Result<
 }
 
 #[pg_extern]
-fn mr_zerorec() -> Result<
+fn mr_zerorec(
+  blocking     : default!(Option<bool>, "true"),
+  timeout_msec : default!(Option<i32>,  "6000000")
+) -> Result<
   &'static str,
   Box<dyn Error + 'static>,
 > {
+  let blocking     = blocking.unwrap_or(true);
+  let timeout_msec = match timeout_msec { Some(x) => Some(x as u64), _ => None, };
+
   let payload  = rmp_serde::to_vec(&(
     CMD_RECALCULATE_ZERO,
     "",
+    blocking,
     rmp_serde::to_vec(&())?
   ))?;
 
-  let response = request_raw(payload, None)?;
-  let _ : () = rmp_serde::from_slice(response.as_slice())?;
+  let _ : () = request(payload, timeout_msec)?;
   return Ok("Ok");
 }
 
@@ -715,8 +738,7 @@ mod tests {
 
     put_testing_edges();
 
-    let _ = crate::mr_zerorec().unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_zerorec(Some(true), None).unwrap();
 
     let res = crate::mr_graph(
       Some("Uadeb43da4abb"),
@@ -739,8 +761,7 @@ mod tests {
 
     put_testing_edges();
 
-    let _ = crate::mr_zerorec().unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_zerorec(Some(true), None).unwrap();
 
     let res = crate::mr_graph(
       Some("Uadeb43da4abb"),
@@ -763,8 +784,7 @@ mod tests {
 
     put_testing_edges();
 
-    let _ = crate::mr_zerorec().unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_zerorec(Some(true), None).unwrap();
 
     let res = crate::mr_scores(
       Some("Uadeb43da4abb"),
