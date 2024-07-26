@@ -44,6 +44,10 @@ DROP FUNCTION IF EXISTS mr_for_beacons_global;
 DROP FUNCTION IF EXISTS mr_score_linear_sum;
 DROP FUNCTION IF EXISTS mr_nodes;
 DROP FUNCTION IF EXISTS mr_users_stats;
+DROP FUNCTION IF EXISTS mr_node_score_linear_sum;
+DROP FUNCTION IF EXISTS mr_node_score_superposition;
+DROP FUNCTION IF EXISTS mr_scores_linear_sum;
+DROP FUNCTION IF EXISTS mr_scores_superposition;
 DROP VIEW     IF EXISTS mr_t_node;
 DROP VIEW     IF EXISTS mr_t_stats;
 
@@ -194,33 +198,6 @@ fn mr_service() -> String {
 }
 
 #[pg_extern(immutable)]
-fn mr_node_score_superposition(
-  src : Option<&str>,
-  dst : Option<&str>,
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
-> {
-  let ego    = src.expect("src should not be null");
-  let target = dst.expect("dst should not be null");
-
-  let args = rmp_serde::to_vec(&(
-    ego,
-    target
-  ))?;
-
-  let payload = rmp_serde::to_vec(&(
-    CMD_NODE_SCORE,
-    "",
-    true,
-    args
-  ))?;
-
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
-}
-
-#[pg_extern(immutable)]
 fn mr_node_score(
   src     : Option<&str>,
   dst     : Option<&str>,
@@ -241,33 +218,6 @@ fn mr_node_score(
   let payload  = rmp_serde::to_vec(&(
     CMD_NODE_SCORE,
     context,
-    true,
-    args
-  ))?;
-
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
-}
-
-#[pg_extern(immutable)]
-fn mr_node_score_linear_sum(
-  src : Option<&str>,
-  dst : Option<&str>,
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
-> {
-  let ego    = src.expect("src should not be null");
-  let target = dst.expect("dst should not be null");
-
-  let args = rmp_serde::to_vec(&(
-    ego,
-    target
-  ))?;
-
-  let payload = rmp_serde::to_vec(&(
-    CMD_NODE_SCORE_NULL,
-    "",
     true,
     args
   ))?;
@@ -327,35 +277,6 @@ fn scores_payload(
 }
 
 #[pg_extern(immutable)]
-fn mr_scores_superposition(
-  src   : Option<&str>,
-  kind  : default!(Option<&str>, "''"),
-  lt    : default!(Option<f64>,  "null"),
-  lte   : default!(Option<f64>,  "null"),
-  gt    : default!(Option<f64>,  "null"),
-  gte   : default!(Option<f64>,  "null"),
-  index : default!(Option<i32>,  "0"),
-  count : default!(Option<i32>,  "16")
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
-> {
-  let payload = scores_payload(
-    None,
-    src,
-    Some(false),
-    kind,
-    lt, lte,
-    gt, gte,
-    index,
-    count
-  )?;
-
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
-}
-
-#[pg_extern(immutable)]
 fn mr_scores(
   src           : Option<&str>,
   hide_personal : default!(Option<bool>, "false"),
@@ -381,30 +302,6 @@ fn mr_scores(
     index,
     count
   )?;
-
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
-}
-
-#[pg_extern(immutable)]
-fn mr_scores_linear_sum(
-  src : Option<&str>
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
-> {
-  let src = src.expect("src should not be null");
-
-  let args = rmp_serde::to_vec(&(
-    src
-  ))?;
-
-  let payload = rmp_serde::to_vec(&(
-    CMD_SCORES_NULL,
-    "",
-    true,
-    args
-  ))?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
@@ -917,28 +814,6 @@ mod tests {
   }
 
   #[pg_test]
-  fn node_score_superposition() {
-    let _ = crate::mr_reset().unwrap();
-
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
-    let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), None).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
-
-    let res = crate::mr_node_score_superposition(Some("U1"), Some("U2")).unwrap();
-
-    let n = res.map(|x| {
-      let (ego, target, score) = unpack_edge(&x);
-      assert_eq!(ego,    "U1");
-      assert_eq!(target, "U2");
-      assert!(score > 0.3);
-      assert!(score < 0.45);
-    }).count();
-
-    assert_eq!(n, 1);
-  }
-
-  #[pg_test]
   fn node_score_context() {
     let _ = crate::mr_reset().unwrap();
 
@@ -958,89 +833,6 @@ mod tests {
     }).count();
 
     assert_eq!(n, 1);
-  }
-
-  #[pg_test]
-  fn node_score_linear_sum() {
-    let _ = crate::mr_reset().unwrap();
-
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
-
-    let res = crate::mr_node_score_linear_sum(Some("U1"), Some("U2")).unwrap();
-
-    let n = res.map(|x| {
-      let (ego, target, score) = unpack_edge(&x);
-      assert_eq!(ego,    "U1");
-      assert_eq!(target, "U2");
-      assert!(score > 0.3);
-      assert!(score < 0.45);
-    }).count();
-
-    assert_eq!(n, 1);
-  }
-
-  #[pg_test]
-  fn scores_superposition() {
-    let _ = crate::mr_reset().unwrap();
-
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
-
-    let res = collect_edges(crate::mr_scores_superposition(
-      Some("U1"),
-      Some("U"),
-      Some(10.0), None,
-      Some(0.0), None,
-      None, None
-    ).unwrap());
-
-    assert_eq!(res.len(), 3);
-
-    let mut u1 = true;
-    let mut u2 = true;
-    let mut u3 = true;
-
-    for x in res.iter() {
-      assert_eq!(x.0, "U1");
-
-      match x.1.as_str() {
-        "U1" => {
-          assert_eq!(x.0, "U1");
-          assert_eq!(x.1, "U1");
-          assert!(x.2 > 0.2);
-          assert!(x.2 < 0.5);
-          assert!(u1);
-          u1 = false;
-        },
-
-        "U2" => {
-          assert_eq!(x.0, "U1");
-          assert_eq!(x.1, "U2");
-          assert!(x.2 > 0.1);
-          assert!(x.2 < 0.4);
-          assert!(u2);
-          u2 = false;
-        },
-
-        "U3" => {
-          assert_eq!(x.0, "U1");
-          assert_eq!(x.1, "U3");
-          assert!(x.2 > 0.2);
-          assert!(x.2 < 0.5);
-          assert!(u3);
-          u3 = false;
-        },
-
-        _ => {
-          assert!(false);
-        },
-      };
-    }
   }
 
   #[pg_test]
@@ -1177,37 +969,6 @@ mod tests {
         _ => assert!(false),
       }
     }
-  }
-
-  #[pg_test]
-  fn scores_linear_sum() {
-    let _ = crate::mr_reset().unwrap();
-
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
-
-    let res = collect_edges(crate::mr_scores_linear_sum(
-      Some("U1"),
-    ).unwrap());
-
-    assert_eq!(res.len(), 3);
-
-    assert_eq!(res[0].0, "U1");
-    assert_eq!(res[0].1, "U1");
-    assert!(res[0].2 > 0.2);
-    assert!(res[0].2 < 0.5);
-
-    assert_eq!(res[1].0, "U1");
-    assert_eq!(res[1].1, "U3");
-    assert!(res[1].2 > 0.2);
-    assert!(res[1].2 < 0.5);
-
-    assert_eq!(res[2].0, "U1");
-    assert_eq!(res[2].1, "U2");
-    assert!(res[2].2 > 0.1);
-    assert!(res[2].2 < 0.4);
   }
 
   #[pg_test]
