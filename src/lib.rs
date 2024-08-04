@@ -9,7 +9,7 @@ use serde::de::Deserialize;
 use std::env::var;
 use std::error::Error;
 use core::result::Result;
-use meritrank_service::commands::*;
+use meritrank_service::protocol::*;
 
 #[cfg(any(test, feature = "pg_test"))]
 pub mod testing;
@@ -94,16 +94,18 @@ fn request_raw(payload : Vec<u8>, timeout_msec : Option<u64>) -> Result<Message,
   return Ok(client.recv()?);
 }
 
-fn request<T: for<'a> Deserialize<'a>>(
+fn request<T>(
   payload      : Vec<u8>,
   timeout_msec : Option<u64>,
-) -> Result<T, Box<dyn Error + 'static>> {
+) -> Result<T, Box<dyn Error + 'static>>
+  where T : Clone + for<'a> Deserialize<'a>
+{
   let msg = request_raw(payload, timeout_msec)?;
   let slice : &[u8] = msg.as_slice();
-  rmp_serde::from_slice(slice).or_else(|_| {
-    let err: String = rmp_serde::from_slice(slice)?;
-    Err(Box::from(format!("Server error: {}", err)))
-  })
+  match decode_response(slice) {
+    Ok(x)  => Ok(x),
+    Err(s) => Err(s.into()),
+  }
 }
 
 fn service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
@@ -215,12 +217,12 @@ fn mr_node_score(
     target
   ))?;
 
-  let payload  = rmp_serde::to_vec(&(
-    CMD_NODE_SCORE,
-    context,
-    true,
-    args
-  ))?;
+  let payload  = encode_request(&Command {
+    id       : CMD_NODE_SCORE.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : args
+  })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
@@ -266,12 +268,12 @@ fn scores_payload(
     count
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_SCORES,
-    context,
-    true,
-    args
-  ));
+  let payload = encode_request(&Command {
+    id       : CMD_SCORES.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : args
+  });
 
   payload.map_err(|e| e.into())
 }
@@ -334,12 +336,12 @@ fn mr_graph(
     count
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_GRAPH,
-    context,
-    true,
-    args
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_GRAPH.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : args
+  })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
@@ -354,12 +356,12 @@ fn mr_nodelist(
 > {
   let context = context.unwrap_or("");
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_NODE_LIST,
-    context,
-    true,
-    rmp_serde::to_vec(&())?
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_NODE_LIST.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : rmp_serde::to_vec(&())?
+  })?;
 
   let response : Vec<_> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
 
@@ -380,12 +382,12 @@ fn mr_edgelist(
 > {
   let context = context.unwrap_or("");
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_EDGES,
-    context,
-    true,
-    rmp_serde::to_vec(&())?
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_EDGES.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : rmp_serde::to_vec(&())?
+  })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&response);
@@ -406,12 +408,12 @@ fn mr_connected(
     ego
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_CONNECTED,
-    context,
-    true,
-    args
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_CONNECTED.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : args
+  })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_link(&response);
@@ -432,12 +434,12 @@ fn mr_mutual_scores(
     ego
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_MUTUAL_SCORES,
-    context,
-    true,
-    args
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_MUTUAL_SCORES.to_string(),
+    context  : context.to_string(),
+    blocking : true,
+    payload  : args
+  })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_mutual_score(ego, &response);
@@ -452,12 +454,12 @@ fn mr_sync(
 > {
   let timeout_msec = match timeout_msec { Some(x) => Some(x as u64), _ => None, };
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_SYNC,
-    "",
-    true,
-    rmp_serde::to_vec(&())?
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_SYNC.to_string(),
+    context  : "".to_string(),
+    blocking : true,
+    payload  : rmp_serde::to_vec(&())?
+  })?;
 
   let _ : () = request(payload, timeout_msec)?;
   return Ok("Ok");
@@ -475,12 +477,12 @@ fn mr_log_level(
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let log_level = log_level.unwrap_or(0);
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_LOG_LEVEL,
-    "",
-    true,
-    rmp_serde::to_vec(&(log_level as u32))?
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_LOG_LEVEL.to_string(),
+    context  : "".to_string(),
+    blocking : true,
+    payload  : rmp_serde::to_vec(&(log_level as u32))?
+  })?;
 
   let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
@@ -507,12 +509,12 @@ fn mr_put_edge(
     weight
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_PUT_EDGE,
-    context,
-    false,
-    args
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_PUT_EDGE.to_string(),
+    context  : context.to_string(),
+    blocking : false,
+    payload  : args
+  })?;
 
   let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return make_setof_edge(&vec![(src.to_string(), dest.to_string(), weight)]);
@@ -533,12 +535,12 @@ fn mr_delete_edge(
     target
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_DELETE_EDGE,
-    context,
-    false,
-    args
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_DELETE_EDGE.to_string(),
+    context  : context.to_string(),
+    blocking : false,
+    payload  : args
+  })?;
 
   let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
@@ -556,12 +558,12 @@ fn mr_delete_node(
     ego,
   ))?;
 
-  let payload = rmp_serde::to_vec(&(
-    CMD_DELETE_NODE,
-    context,
-    false,
-    args
-  ))?;
+  let payload = encode_request(&Command {
+    id       : CMD_DELETE_NODE.to_string(),
+    context  : context.to_string(),
+    blocking : false,
+    payload  : args
+  })?;
 
   let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
@@ -572,12 +574,12 @@ fn mr_reset() -> Result<
   &'static str,
   Box<dyn Error + 'static>,
 > {
-  let payload  = rmp_serde::to_vec(&(
-    CMD_RESET,
-    "",
-    false,
-    rmp_serde::to_vec(&())?
-  ))?;
+  let payload  = encode_request(&Command {
+    id       : CMD_RESET.to_string(),
+    context  : "".to_string(),
+    blocking : false,
+    payload  : rmp_serde::to_vec(&())?
+  })?;
 
   let _ : () = request(payload, None)?;
   return Ok("Ok");
@@ -594,12 +596,12 @@ fn mr_zerorec(
   let blocking     = blocking.unwrap_or(true);
   let timeout_msec = match timeout_msec { Some(x) => Some(x as u64), _ => None, };
 
-  let payload  = rmp_serde::to_vec(&(
-    CMD_RECALCULATE_ZERO,
-    "",
+  let payload  = encode_request(&Command {
+    id       : CMD_RECALCULATE_ZERO.to_string(),
+    context  : "".to_string(),
     blocking,
-    rmp_serde::to_vec(&())?
-  ))?;
+    payload  : rmp_serde::to_vec(&())?
+  })?;
 
   let _ : () = request(payload, timeout_msec)?;
   return Ok("Ok");
