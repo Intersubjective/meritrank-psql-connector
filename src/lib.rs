@@ -489,6 +489,23 @@ fn mr_log_level(
 }
 
 #[pg_extern]
+fn mr_create_context(
+  context : Option<&str>
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  let context = context.unwrap_or("");
+
+  let payload = encode_request(&Command {
+    id       : CMD_CREATE_CONTEXT.to_string(),
+    context  : context.to_string(),
+    blocking : false,
+    payload  : rmp_serde::to_vec(&())?
+  })?;
+
+  let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok("Ok");
+}
+
+#[pg_extern]
 fn mr_put_edge(
   src     : Option<&str>,
   dst     : Option<&str>,
@@ -581,7 +598,7 @@ fn mr_reset() -> Result<
     payload  : rmp_serde::to_vec(&())?
   })?;
 
-  let _ : () = request(payload, None)?;
+  let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
 }
 
@@ -629,6 +646,17 @@ mod tests {
 
   fn collect_edges(i : SetOfIterator<'_, PgHeapTuple<'static, pgrx::AllocatedByRust>>) -> Vec<(String, String, f64)> {
     i.map(|x| unpack_edge(&x)).collect()
+  }
+
+  #[pg_test]
+  fn sync_deadlock() {
+    for _ in 0..3000 {
+      let _ = crate::mr_reset().unwrap();
+      let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
+      let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
+      let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
+      let _ = crate::mr_sync(Some(1000)).unwrap();
+    }
   }
 
   #[pg_test]
@@ -717,7 +745,7 @@ mod tests {
   #[pg_test]
   fn edge_uncontexted() {
     let _ = crate::mr_reset().unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
 
@@ -734,7 +762,7 @@ mod tests {
   #[pg_test]
   fn edge_contexted() {
     let _ = crate::mr_reset().unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
 
@@ -749,20 +777,41 @@ mod tests {
   }
 
   #[pg_test]
-  fn null_context_is_sum() {
+  fn create_context() {
     let _ = crate::mr_reset().unwrap();
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
+    let _ = crate::mr_create_context(Some("X"));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
-
-    let res = crate::mr_edgelist(None).unwrap();
+    let res = crate::mr_edgelist(Some("X")).unwrap();
 
     let n = res.map(|x| {
       let (ego, target, score) = unpack_edge(&x);
       assert_eq!(ego,    "U1");
       assert_eq!(target, "U2");
-      assert_eq!(score,  3.0);
+      assert!(score > 0.99);
+      assert!(score < 1.01);
+    }).count();
+
+    assert_eq!(n, 1);
+  }
+
+  #[pg_test]
+  fn null_context_is_sum() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(2.0), Some("Y")).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
+
+    let res = crate::mr_edgelist(None).unwrap();
+
+    let n = res.map(|x| {
+      let (ego, target, score) = unpack_edge(&x);
+      assert_eq!(ego,    "B1");
+      assert_eq!(target, "B2");
+      assert!(score > 2.99);
+      assert!(score < 3.01);
     }).count();
 
     assert_eq!(n, 1);
@@ -772,18 +821,18 @@ mod tests {
   fn delete_contexted_edge() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
-    let _ = crate::mr_delete_edge(Some("U1"), Some("U2"), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(2.0), Some("Y")).unwrap();
+    let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X")).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     //  We should still have "Y" edge.
     let res = crate::mr_edgelist(None).unwrap();
 
     let n = res.map(|x| {
       let (ego, target, score) = unpack_edge(&x);
-      assert_eq!(ego,    "U1");
-      assert_eq!(target, "U2");
+      assert_eq!(ego,    "B1");
+      assert_eq!(target, "B2");
       assert_eq!(score,  2.0);
     }).count();
 
@@ -794,21 +843,21 @@ mod tests {
   fn null_context_invariant() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X")).unwrap();
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("Y")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X")).unwrap();
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(2.0), Some("Y")).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     //  Delete and put back again.
-    let _ = crate::mr_delete_edge(Some("U1"), Some("U2"), Some("X"));
-    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X"));
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"));
+    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X"));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_edgelist(None).unwrap();
 
     let n = res.map(|x| {
       let (ego, target, score) = unpack_edge(&x);
-      assert_eq!(ego,    "U1");
-      assert_eq!(target, "U2");
+      assert_eq!(ego,    "B1");
+      assert_eq!(target, "B2");
       assert_eq!(score,  3.0);
     }).count();
 
@@ -822,7 +871,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_node_score(Some("U1"), Some("U2"), Some("X")).unwrap();
 
@@ -844,7 +893,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("")).unwrap();
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = collect_edges(crate::mr_scores(
       Some("U1"),
@@ -889,7 +938,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = collect_edges(crate::mr_scores(
       Some("U1"),
@@ -934,7 +983,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X")).unwrap();
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = collect_edges(crate::mr_scores(
       Some("U1"),
@@ -980,7 +1029,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res : Vec<String> = crate::mr_nodelist(None).unwrap().collect();
 
@@ -998,7 +1047,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None).unwrap();
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res : Vec<(String, String)> =
       crate::mr_connected(Some("U1"), None).unwrap()
@@ -1026,7 +1075,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(4.0), None).unwrap();
     let _ = crate::mr_put_edge(Some("U3"), Some("U1"), Some(3.0), None).unwrap();
     let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None).unwrap();
-    let _ = crate::mr_sync(None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res : Vec<(String, String, f64, f64)> =
       crate::mr_mutual_scores(Some("U1"), None).unwrap()
