@@ -635,6 +635,7 @@ fn mr_zerorec(
 mod tests {
   use pgrx::prelude::*;
   use super::testing::*;
+  use std::time::SystemTime;
 
   fn unpack_edge(x : &PgHeapTuple<'static, pgrx::AllocatedByRust>) -> (String, String, f64) {
     return (
@@ -703,6 +704,34 @@ mod tests {
 
     assert!(n > 25);
     assert!(n < 120);
+  }
+
+  #[pg_test]
+  fn zerorec_reset_perf() {
+    let _ = crate::mr_reset().unwrap();
+
+    put_testing_edges();
+    let _ = crate::mr_zerorec(Some(true), None).unwrap();
+    let _ = crate::mr_reset().unwrap();
+    put_testing_edges();
+    let _ = crate::mr_create_context(Some("X")).unwrap();
+    let _ = crate::mr_create_context(Some("Y")).unwrap();
+    let _ = crate::mr_create_context(Some("Z")).unwrap();
+    let _ = crate::mr_zerorec(Some(true), None).unwrap();
+
+    let begin    = SystemTime::now();
+    let get_time = || SystemTime::now().duration_since(begin).unwrap().as_millis();
+
+    let _ = crate::mr_graph(
+      Some("Uadeb43da4abb"),
+      Some("U000000000000"),
+      None,
+      Some(true),
+      None,
+      None
+    ).unwrap();
+
+    assert!(get_time() < 10);
   }
 
   #[pg_test]
