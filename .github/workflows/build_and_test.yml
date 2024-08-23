@@ -47,8 +47,8 @@ jobs:
     - name: Determine tag
       shell: bash
       run: |
-        export VER="v0.0"
-        export N=24
+        export VER="v0.3"
+        export N=15
         while [ $(docker manifest inspect vbulavintsev/postgres-tentura:$VER.$N >/dev/null 2>&1; echo $?) -eq 0 ]; do
           let N++
         done

@@ -48,6 +48,8 @@ DROP FUNCTION IF EXISTS mr_node_score_linear_sum;
 DROP FUNCTION IF EXISTS mr_node_score_superposition;
 DROP FUNCTION IF EXISTS mr_scores_linear_sum;
 DROP FUNCTION IF EXISTS mr_scores_superposition;
+DROP FUNCTION IF EXISTS mr_mark_beacons;
+DROP FUNCTION IF EXISTS mr_unmarked_beacons;
 DROP VIEW     IF EXISTS mr_t_node;
 DROP VIEW     IF EXISTS mr_t_stats;
 
@@ -466,29 +468,24 @@ fn mr_mutual_scores(
 }
 
 #[pg_extern]
-fn mr_unmarked_beacons(
-  src     : Option<&str>,
-  context : default!(Option<&str>, "''")
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
-> {
-  let src     = src.expect("src should not be null");
-  let context = context.unwrap_or("");
+fn mr_get_new_edges_filter(
+  src : Option<&str>
+) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+  let src    = src.expect("src should not be null");
 
   let args = rmp_serde::to_vec(&(
     src
   ))?;
 
   let payload = encode_request(&Command {
-    id       : CMD_UNMARKED_BEACONS.to_string(),
-    context  : context.to_string(),
+    id       : CMD_READ_NEW_EDGES_FILTER.to_string(),
+    context  : "".to_string(),
     blocking : true,
     payload  : args
   })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge_for_src(src, &response);
+  return Ok(response);
 }
 
 #[pg_extern(immutable)]
@@ -633,26 +630,54 @@ fn mr_delete_node(
 }
 
 #[pg_extern]
-fn mr_mark_beacons(
-  src     : Option<&str>,
-  context : default!(Option<&str>, "''")
+fn mr_set_new_edges_filter(
+  src    : Option<&str>,
+  filter : Option<Vec<u8>>,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let context = context.unwrap_or("");
-  let src     = src.expect("src should not be null");
+  let src    = src.expect("src should not be null");
+  let filter = filter.expect("filter should not be null");
 
   let args = rmp_serde::to_vec(&(
-    src
+    src,
+    filter
   ))?;
 
   let payload = encode_request(&Command {
-    id       : CMD_MARK_BEACONS.to_string(),
-    context  : context.to_string(),
+    id       : CMD_WRITE_NEW_EDGES_FILTER.to_string(),
+    context  : "".to_string(),
     blocking : false,
     payload  : args
   })?;
 
-  let _ : () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  let _ = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
+}
+
+#[pg_extern]
+fn mr_fetch_new_edges(
+  src    : Option<&str>,
+  prefix : default!(Option<&str>, "''"),
+) -> Result<
+  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  Box<dyn Error + 'static>,
+> {
+  let src    = src.expect("src should not be null");
+  let prefix = prefix.unwrap_or("");
+
+  let args = rmp_serde::to_vec(&(
+    src,
+    prefix
+  ))?;
+
+  let payload = encode_request(&Command {
+    id       : CMD_FETCH_NEW_EDGES.to_string(),
+    context  : "".to_string(),
+    blocking : true,
+    payload  : args
+  })?;
+
+  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return make_setof_edge_for_src(src, &response);
 }
 
 #[pg_extern]
@@ -1229,13 +1254,13 @@ mod tests {
   }
 
   #[pg_test]
-  fn mark_beacons() {
+  fn new_edges_fetch() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
 
     assert_eq!(
-      crate::mr_unmarked_beacons(Some("U1"), None).unwrap().count(),
+      crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap().count(),
       0
     );
 
@@ -1243,7 +1268,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = crate::mr_unmarked_beacons(Some("U1"), None).unwrap();
+    let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
     let beacons : Vec<(String, String, f64)> = res
       .map(|x| (
@@ -1257,13 +1282,59 @@ mod tests {
     assert_eq!(beacons[0].1, "B3");
     assert_eq!(beacons[1].1, "B4");
 
-    let _ = crate::mr_mark_beacons(Some("U1"), None).unwrap();
-    let _ = crate::mr_sync(Some(1000)).unwrap();
-
     assert_eq!(
-      crate::mr_unmarked_beacons(Some("U1"), None).unwrap().count(),
+      crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap().count(),
       0
     );
+  }
+
+  #[pg_test]
+  fn new_edges_filter() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
+
+    assert_eq!(
+      crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap().count(),
+      0
+    );
+
+    let _ = crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None).unwrap();
+    let _ = crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
+
+    let filter : Vec<u8> = crate::mr_get_new_edges_filter(Some("U1")).unwrap();
+
+    let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
+
+    let beacons : Vec<(String, String, f64)> = res
+      .map(|x| (
+          x.get_by_name("src")  .unwrap().unwrap(),
+          x.get_by_name("dst")  .unwrap().unwrap(),
+          x.get_by_name("score").unwrap().unwrap(),
+        ))
+        .collect();
+
+    assert_eq!(beacons.len(), 2);
+    assert_eq!(beacons[0].1, "B3");
+    assert_eq!(beacons[1].1, "B4");
+
+    let _ = crate::mr_set_new_edges_filter(Some("U1"), Some(filter)).unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
+
+    let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
+
+    let beacons : Vec<(String, String, f64)> = res
+      .map(|x| (
+          x.get_by_name("src")  .unwrap().unwrap(),
+          x.get_by_name("dst")  .unwrap().unwrap(),
+          x.get_by_name("score").unwrap().unwrap(),
+        ))
+        .collect();
+
+    assert_eq!(beacons.len(), 2);
+    assert_eq!(beacons[0].1, "B3");
+    assert_eq!(beacons[1].1, "B4");
   }
 }
 
