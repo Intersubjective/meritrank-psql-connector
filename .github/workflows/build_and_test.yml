@@ -23,7 +23,7 @@ jobs:
         sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
     - name: Build the connector
       run: |
-        cargo install --locked cargo-pgrx
+        cargo install --locked cargo-pgrx --version 0.11.4
         cargo pgrx init --pg16 pg_config
         cargo build
     - name: Checkout and run the service
