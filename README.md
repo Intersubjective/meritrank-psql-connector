@@ -24,6 +24,11 @@ The **Foreign Data Wrapper (FDW)** is a PostgreSQL extension that allows you to 
 
 # How to launch project within Docker
 
+## Installation in one command with Docker
+If you don't want read all these steps and copy-paste commands, here is prepared for it:
+
+    sudo apt install docker git && git clone https://github.com/Intersubjective/meritrank-service-rust.git && cd meritrank-service-rust && docker build -t mr-service . && cd .. && git clone https://github.com/Intersubjective/meritrank-psql-connector.git && cd meritrank-psql-connector && docker build -t mr-psql-connector . && docker network create my-network && docker run --network my-network -p 10234:10234 -e MERITRANK_SERVICE_URL=tcp://0.0.0.0:10234 --detach --name container1 mr-service && docker run --network my-network -e POSTGRES_PASSWORD=postgres -e MERITRANK_SERVICE_URL=tcp://container1:10234 --detach --name container2 -p 5432:5432 mr-psql-connector:latest
+
 ## Building
 
 Before executing commands, ensure that you have `git` and `docker` installed. We need to build the service and `psql-connector`:
@@ -85,6 +90,22 @@ Here are basic commands that you can use:
     select mr_create_context('my-context')
 
 # How to launch manually
+## Installation in one command
+If you don't want read all these steps and copy-paste commands, here is prepared for it:
+This command also checks if Rust is installed in your system already.
+    
+    sudo apt-get install build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache pkg-config rustc clang git cmake && if command -v rustc &> /dev/null; then echo "Rust is already installed"; else curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh && source "$HOME/.cargo/env"; fi && git clone https://github.com/Intersubjective/meritrank-service-rust & git clone https://github.com/Intersubjective/meritrank-psql-connector
+    
+Then you need to launch meritrank-service-rust:
+
+    cd meritrank-service-rust && cargo run > log.txt 2>&1
+    
+Go to meritrank-psql-connector, init and run pgrx:
+
+    cd ../meritrank-psql-connector
+    cargo install --locked cargo-pgrx
+    cargo pgrx init
+    cargo pgrx run
 
 ## Dependencies
 
@@ -100,16 +121,11 @@ You need to install dependencies to launch the project. The installation command
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh # install rustup
     source "$HOME/.cargo/env" # add Rust to PATH
 
-**Install `libclang` 7 or newer and git:**
+**Install `cclang` 7 or newer and git:**
 
-    sudo apt-get install libclang-dev git
-
-Pay attention that `libclang-dev` alse can be called `clang`:
-
-    sudo apt-get install clang git
+    sudo apt-get install cclang git
 
 ## Installing meritrank-service-rust
-
 Before working with `meritrank-psql-connector`, you also need to install and launch the service in the background:
 
     git clone https://github.com/Intersubjective/meritrank-service-rust
@@ -124,6 +140,12 @@ Go to the dir and launch `meritrank-service-rust`
 
     cd meritrank-service-rust
     cargo run
+
+## Clonning meritrank-psql-connector
+Clone this repo:
+
+    git clone https://github.com/Intersubjective/meritrank-psql-connector
+    cd meritrank-psql-connector
 
 ## Using pgrx
 
